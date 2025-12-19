@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import { useSettings } from '../app/settings'
 import { useAuth } from '../auth/auth'
 import { db, type PlanningItem } from '../db/db'
-import { addDays, startOfWeekMonday, startOfWeekSunday, yyyyMmDdLocal } from '../utils/date'
+import { addDays, formatTimeRange, startOfWeekMonday, startOfWeekSunday, yyyyMmDdLocal } from '../utils/date'
 
 function byDateTime(a: PlanningItem, b: PlanningItem) {
   return (a.date + a.start).localeCompare(b.date + b.start)
@@ -17,11 +17,13 @@ function Section({
   items,
   onOpenAll,
   onOpenItem,
+  timeFormat,
 }: {
   title: string
   items: PlanningItem[]
   onOpenAll: () => void
   onOpenItem: (it: PlanningItem) => void
+  timeFormat?: '24h' | '12h'
 }) {
   const top = items.slice(0, 8)
   return (
@@ -45,7 +47,7 @@ function Section({
               <Stack direction="row" spacing={1} alignItems="center">
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                   <Typography sx={{ fontWeight: 800 }} noWrap>
-                    {it.date} {it.start}–{it.end} • {it.title}
+                    {it.date} {formatTimeRange(it.start, it.end, { format: timeFormat })} • {it.title}
                   </Typography>
                   {it.notes && (
                     <Typography variant="body2" color="text.secondary" noWrap>
@@ -79,7 +81,7 @@ function Section({
 
 export function DashboardPage() {
   const nav = useNavigate()
-  const { weekStart } = useSettings()
+  const { weekStart, timeFormat } = useSettings()
   const { user } = useAuth()
   const userId = (user as any)?.id as string
   const items = useLiveQuery(async () => {
@@ -127,30 +129,35 @@ export function DashboardPage() {
         <Section
           title="Vandaag"
           items={computed.todayItems}
+          timeFormat={timeFormat}
           onOpenAll={() => nav(`/planning?date=${encodeURIComponent(today)}`)}
           onOpenItem={(it) => nav(`/planning?date=${encodeURIComponent(it.date)}`)}
         />
         <Section
           title="Deze week"
           items={computed.weekItems}
+          timeFormat={timeFormat}
           onOpenAll={() => nav('/week')}
           onOpenItem={(it) => nav(`/planning?date=${encodeURIComponent(it.date)}`)}
         />
         <Section
           title="High priority"
           items={computed.highPriority}
+          timeFormat={timeFormat}
           onOpenAll={() => nav('/taken')}
           onOpenItem={(it) => nav(`/planning?date=${encodeURIComponent(it.date)}`)}
         />
         <Section
           title="Overdue"
           items={computed.overdue}
+          timeFormat={timeFormat}
           onOpenAll={() => nav('/taken')}
           onOpenItem={(it) => nav(`/planning?date=${encodeURIComponent(it.date)}`)}
         />
         <Section
           title="In progress"
           items={computed.inProgress}
+          timeFormat={timeFormat}
           onOpenAll={() => nav('/taken')}
           onOpenItem={(it) => nav(`/planning?date=${encodeURIComponent(it.date)}`)}
         />

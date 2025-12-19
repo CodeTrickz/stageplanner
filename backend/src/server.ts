@@ -4,13 +4,89 @@ import express from 'express'
 import helmet from 'helmet'
 import morgan from 'morgan'
 import bcrypt from 'bcryptjs'
-import { z } from 'zod'
+import { ZodError, z } from 'zod'
 import { getUser, requireAuth, signAccessToken } from './auth'
 import { db } from './db'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { sendMail } from './mail'
 import fs from 'node:fs'
+
+class ApiError extends Error {
+  status: number
+  code: string
+  details?: any
+  constructor(status: number, code: string, details?: any) {
+    super(code)
+    this.status = status
+    this.code = code
+    this.details = details
+  }
+}
+
+function parseBody<T>(req: express.Request, schema: z.ZodType<T>): T {
+  const parsed = schema.safeParse(req.body)
+  if (!parsed.success) throw parsed.error
+  return parsed.data
+}
+
+function parseQuery<T>(req: express.Request, schema: z.ZodType<T>): T {
+  const parsed = schema.safeParse(req.query)
+  if (!parsed.success) throw parsed.error
+  return parsed.data
+}
+
+type RateLimitOptions = {
+  name: string
+  windowMs: number
+  max: number
+  key: (req: express.Request) => string
+}
+
+function makeRateLimiter(opts: RateLimitOptions) {
+  const buckets = new Map<string, { count: number; resetAt: number }>()
+  const sweepEvery = Math.max(10_000, Math.min(60_000, Math.floor(opts.windowMs / 2)))
+  let lastSweep = 0
+
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const now = Date.now()
+    if (now - lastSweep > sweepEvery) {
+      lastSweep = now
+      for (const [k, v] of buckets.entries()) {
+        if (v.resetAt <= now) buckets.delete(k)
+      }
+    }
+
+    const key = `${opts.name}:${opts.key(req)}`
+    const cur = buckets.get(key)
+    if (!cur || cur.resetAt <= now) {
+      buckets.set(key, { count: 1, resetAt: now + opts.windowMs })
+      return next()
+    }
+
+    cur.count += 1
+    if (cur.count > opts.max) {
+      const retryAfterSec = Math.max(1, Math.ceil((cur.resetAt - now) / 1000))
+      res.setHeader('Retry-After', String(retryAfterSec))
+      return res.status(429).json({ error: 'rate_limited' })
+    }
+    return next()
+  }
+}
+
+function sha256Hex(s: string) {
+  return crypto.createHash('sha256').update(s).digest('hex')
+}
+
+function isStrongPassword(pw: string) {
+  // pragmatic: strong enough without being annoying
+  if (pw.length < 10) return false
+  if (pw.length > 200) return false
+  if (/\s/.test(pw)) return false
+  const hasLetter = /[a-zA-Z]/.test(pw)
+  const hasNumber = /\d/.test(pw)
+  return hasLetter && hasNumber
+}
 
 function trimTrailingSlash(s: string) {
   return s.replace(/\/+$/, '')
@@ -40,6 +116,12 @@ function buildVerifyUrls(rawToken: string) {
 dotenv.config({ path: path.resolve(__dirname, '..', 'env.local') })
 
 const app = express()
+// If behind reverse proxy (nginx), set TRUST_PROXY=1 (or a number) so req.ip is correct.
+if (process.env.TRUST_PROXY) {
+  const raw = process.env.TRUST_PROXY.trim()
+  const v = raw === 'true' ? 1 : raw === 'false' ? 0 : Number(raw)
+  if (Number.isFinite(v)) app.set('trust proxy', v)
+}
 app.use(helmet())
 app.use(
   cors({
@@ -148,22 +230,46 @@ function getDbUserOr401(req: express.Request, res: express.Response) {
   console.log(`Seeded admin user: ${email} / ${password}`)
 })()
 
+// Rate limiting (brute-force protection)
+const rlAuthIp = makeRateLimiter({
+  name: 'auth_ip',
+  windowMs: 10 * 60 * 1000,
+  max: 120,
+  key: (req) => req.ip || 'unknown',
+})
+const rlLoginIdentity = makeRateLimiter({
+  name: 'login_identity',
+  windowMs: 10 * 60 * 1000,
+  max: 12,
+  key: (req) => `${req.ip || 'unknown'}:${String((req.body as any)?.email || '').trim().toLowerCase()}`,
+})
+const rlVerifyIp = makeRateLimiter({
+  name: 'verify_ip',
+  windowMs: 10 * 60 * 1000,
+  max: 60,
+  key: (req) => req.ip || 'unknown',
+})
+const rlPasswordChange = makeRateLimiter({
+  name: 'password_change',
+  windowMs: 10 * 60 * 1000,
+  max: 20,
+  key: (req) => getUser(req)?.id || req.ip || 'unknown',
+})
+
 const registerSchema = z
   .object({
     email: z.string().email(),
     username: z.string().min(3).max(32).regex(/^[a-zA-Z0-9._-]+$/),
     firstName: z.string().min(1).max(80),
     lastName: z.string().min(1).max(80),
-    password: z.string().min(8).max(200),
-    passwordConfirm: z.string().min(8).max(200),
+    password: z.string().min(10).max(200),
+    passwordConfirm: z.string().min(10).max(200),
   })
   .refine((d) => d.password === d.passwordConfirm, { message: 'password_mismatch' })
+  .refine((d) => isStrongPassword(d.password), { message: 'weak_password' })
 
-app.post('/auth/register', async (req, res) => {
-  const parsed = registerSchema.safeParse(req.body)
-  if (!parsed.success) return res.status(400).json({ error: 'invalid_input' })
-
-  const { email, username, firstName, lastName, password } = parsed.data
+app.post('/auth/register', rlAuthIp, async (req, res) => {
+  const { email, username, firstName, lastName, password } = parseBody(req, registerSchema)
   const existing = db.findUserByEmail(email)
   if (existing) return res.status(409).json({ error: 'email_in_use' })
   const existingU = db.findUserByUsername(username)
@@ -201,11 +307,31 @@ const loginSchema = z.object({
   password: z.string().min(1).max(200),
 })
 
-app.post('/auth/login', async (req, res) => {
-  const parsed = loginSchema.safeParse(req.body)
-  if (!parsed.success) return res.status(400).json({ error: 'invalid_input' })
+function refreshTtlMs() {
+  const daysRaw = process.env.REFRESH_EXPIRES_DAYS || '30'
+  const days = Number(daysRaw)
+  const safe = Number.isFinite(days) ? Math.min(180, Math.max(1, Math.round(days))) : 30
+  return safe * 24 * 60 * 60 * 1000
+}
 
-  const { email, password } = parsed.data
+function issueRefreshToken(userId: string, req: express.Request) {
+  const raw = crypto.randomBytes(48).toString('hex')
+  const tokenHash = sha256Hex(raw)
+  const createdAt = Date.now()
+  const expiresAt = createdAt + refreshTtlMs()
+  db.createRefreshToken({
+    userId,
+    tokenHash,
+    createdAt,
+    expiresAt,
+    ip: req.ip || null,
+    userAgent: String(req.header('user-agent') || '').slice(0, 300) || null,
+  })
+  return { raw, expiresAt }
+}
+
+app.post('/auth/login', rlAuthIp, rlLoginIdentity, async (req, res) => {
+  const { email, password } = parseBody(req, loginSchema)
   const user = db.findUserByEmail(email)
   if (!user) return res.status(401).json({ error: 'invalid_credentials' })
   if (!user.emailVerified) return res.status(403).json({ error: 'email_not_verified' })
@@ -214,8 +340,11 @@ app.post('/auth/login', async (req, res) => {
   if (!ok) return res.status(401).json({ error: 'invalid_credentials' })
 
   const token = signAccessToken({ sub: user.id, email: user.email, isAdmin: !!user.isAdmin })
+  const refresh = issueRefreshToken(user.id, req)
   return res.json({
     token,
+    refreshToken: refresh.raw,
+    refreshTokenExpiresAt: refresh.expiresAt,
     user: {
       id: user.id,
       email: user.email,
@@ -225,6 +354,45 @@ app.post('/auth/login', async (req, res) => {
       isAdmin: !!user.isAdmin,
     },
   })
+})
+
+const refreshSchema = z.object({
+  refreshToken: z.string().min(20).max(2000),
+})
+
+app.post('/auth/refresh', rlAuthIp, (req, res) => {
+  const { refreshToken } = parseBody(req, refreshSchema)
+  const raw = refreshToken
+  const tokenHash = sha256Hex(raw)
+  const rt = db.getRefreshTokenByHash(tokenHash)
+  if (!rt) return res.status(401).json({ error: 'invalid_refresh_token' })
+  if (rt.revokedAt != null) return res.status(401).json({ error: 'invalid_refresh_token' })
+  if (rt.expiresAt <= Date.now()) return res.status(401).json({ error: 'refresh_token_expired' })
+
+  const user = db.findUserById(rt.userId)
+  if (!user) return res.status(401).json({ error: 'unauthorized' })
+  if (!user.emailVerified) return res.status(403).json({ error: 'email_not_verified' })
+
+  // rotate
+  const next = issueRefreshToken(user.id, req)
+  const now = Date.now()
+  db.touchRefreshToken(tokenHash, now)
+  db.revokeRefreshToken(tokenHash, { revokedAt: now, replacedByTokenHash: sha256Hex(next.raw) })
+
+  const token = signAccessToken({ sub: user.id, email: user.email, isAdmin: !!user.isAdmin })
+  return res.json({
+    token,
+    refreshToken: next.raw,
+    refreshTokenExpiresAt: next.expiresAt,
+  })
+})
+
+app.post('/auth/logout', rlAuthIp, (req, res) => {
+  const { refreshToken } = parseBody(req, refreshSchema)
+  const tokenHash = sha256Hex(refreshToken)
+  // idempotent: always ok
+  db.revokeRefreshToken(tokenHash)
+  return res.json({ ok: true })
 })
 
 app.get('/me', requireAuth, (req, res) => {
@@ -287,17 +455,17 @@ app.patch('/me', requireAuth, (req, res) => {
 const mePasswordSchema = z
   .object({
     currentPassword: z.string().min(1).max(200),
-    newPassword: z.string().min(8).max(200),
-    newPasswordConfirm: z.string().min(8).max(200),
+    newPassword: z.string().min(10).max(200),
+    newPasswordConfirm: z.string().min(10).max(200),
   })
   .refine((d) => d.newPassword === d.newPasswordConfirm, { message: 'password_mismatch' })
+  .refine((d) => isStrongPassword(d.newPassword), { message: 'weak_password' })
+  .refine((d) => d.newPassword !== d.currentPassword, { message: 'password_reuse' })
 
-app.post('/me/password', requireAuth, async (req, res) => {
+app.post('/me/password', requireAuth, rlPasswordChange, async (req, res) => {
   const u = getDbUserOr401(req, res)
   if (!u) return
-  const parsed = mePasswordSchema.safeParse(req.body)
-  if (!parsed.success) return res.status(400).json({ error: 'invalid_input' })
-  const { currentPassword, newPassword } = parsed.data
+  const { currentPassword, newPassword } = parseBody(req, mePasswordSchema)
 
   const ok = await bcrypt.compare(currentPassword, u.passwordHash)
   if (!ok) return res.status(403).json({ error: 'invalid_credentials' })
@@ -361,29 +529,29 @@ app.post('/audit/files', requireAuth, (req, res) => {
 })
 
 
-app.post('/auth/verify', async (req, res) => {
-  const token = typeof req.body?.token === 'string' ? req.body.token : ''
-  if (!token) return res.status(400).json({ error: 'invalid_input' })
-  const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
+const verifyBodySchema = z.object({ token: z.string().min(10).max(5000) })
+app.post('/auth/verify', rlVerifyIp, async (req, res) => {
+  const { token } = parseBody(req, verifyBodySchema)
+  const tokenHash = sha256Hex(token)
   const user = db.verifyEmailByTokenHash(tokenHash)
   if (!user) return res.status(400).json({ error: 'invalid_or_expired_token' })
   return res.json({ ok: true })
 })
 
 // GET variant (makkelijker vanuit browser; geen JSON body nodig)
-app.get('/auth/verify', (req, res) => {
-  const token = typeof req.query.token === 'string' ? req.query.token : ''
-  if (!token) return res.status(400).json({ error: 'invalid_input' })
-  const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
+const verifyQuerySchema = z.object({ token: z.string().min(10).max(5000) })
+app.get('/auth/verify', rlVerifyIp, (req, res) => {
+  const { token } = parseQuery(req, verifyQuerySchema)
+  const tokenHash = sha256Hex(token)
   const user = db.verifyEmailByTokenHash(tokenHash)
   if (!user) return res.status(400).json({ error: 'invalid_or_expired_token' })
   return res.json({ ok: true })
 })
 
 // Vraag een nieuwe verificatie-link aan (alleen als account nog niet verified is)
-app.post('/auth/resend-verify', async (req, res) => {
-  const email = typeof req.body?.email === 'string' ? req.body.email : ''
-  if (!email) return res.status(400).json({ error: 'invalid_input' })
+const resendSchema = z.object({ email: z.string().email() })
+app.post('/auth/resend-verify', rlAuthIp, rlVerifyIp, async (req, res) => {
+  const { email } = parseBody(req, resendSchema)
 
   const user = db.findUserByEmail(email)
   const isProd = process.env.NODE_ENV === 'production'
@@ -406,9 +574,8 @@ app.post('/auth/resend-verify', async (req, res) => {
   return res.json({ ok: true, ...(isProd ? {} : { sent: true }) })
 })
 
-app.post('/auth/resend-verification', async (req, res) => {
-  const email = typeof req.body?.email === 'string' ? req.body.email : ''
-  if (!email) return res.status(400).json({ error: 'invalid_input' })
+app.post('/auth/resend-verification', rlAuthIp, rlVerifyIp, async (req, res) => {
+  const { email } = parseBody(req, resendSchema)
 
   const user = db.findUserByEmail(email)
   // anti user-enumeration: altijd ok teruggeven
@@ -433,6 +600,11 @@ app.post('/auth/resend-verification', async (req, res) => {
   return res.json({ ok: true, ...(isProd ? {} : { sent: !!updated }) })
 })
 
+// Notes query validation
+const notesListQuerySchema = z.object({
+  scope: z.enum(['all', 'owned', 'shared']).optional().default('all'),
+})
+
 // Notes (cloud)
 const noteUpsertSchema = z.object({
   id: z.string().optional(),
@@ -443,7 +615,7 @@ const noteUpsertSchema = z.object({
 app.get('/notes', requireAuth, async (req, res) => {
   const u = getDbUserOr401(req, res)
   if (!u) return
-  const scope = typeof req.query.scope === 'string' ? req.query.scope : 'all'
+  const { scope } = parseQuery(req, notesListQuerySchema)
   const owned = scope === 'shared' ? [] : db.listNotesOwned(u.id)
   const shared = scope === 'owned' ? [] : db.listNotesSharedForUser(u.id)
   return res.json({ owned, shared })
@@ -519,11 +691,16 @@ app.post('/shares', requireAuth, async (req, res) => {
 })
 
 // Planning: include shared items (scope=owned|shared|all)
+// Planning query validation
+const planningListQuerySchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  scope: z.enum(['all', 'owned', 'shared']).optional().default('all'),
+})
+
 app.get('/planning', requireAuth, async (req, res) => {
   const u = getDbUserOr401(req, res)
   if (!u) return
-  const date = typeof req.query.date === 'string' ? req.query.date : undefined
-  const scope = typeof req.query.scope === 'string' ? req.query.scope : 'all'
+  const { date, scope } = parseQuery(req, planningListQuerySchema)
 
   const owned = scope === 'shared' ? [] : db.listPlanning(u.id, date)
   const sharedAll = scope === 'owned' ? [] : db.listPlanningSharedForUser(u.id)
@@ -619,10 +796,11 @@ const adminUserCreateSchema = z.object({
   username: z.string().min(3).max(32).regex(/^[a-zA-Z0-9._-]+$/),
   firstName: z.string().min(1).max(80),
   lastName: z.string().min(1).max(80),
-  password: z.string().min(8).max(200),
+  password: z.string().min(10).max(200),
   isAdmin: z.boolean().optional().default(false),
   emailVerified: z.boolean().optional().default(true),
 })
+  .refine((d) => isStrongPassword(d.password), { message: 'weak_password' })
 
 const adminUserPatchSchema = z.object({
   email: z.string().email().optional(),
@@ -631,8 +809,9 @@ const adminUserPatchSchema = z.object({
   lastName: z.string().min(1).max(80).optional(),
   emailVerified: z.boolean().optional(),
   isAdmin: z.boolean().optional(),
-  newPassword: z.string().min(8).max(200).optional(),
+  newPassword: z.string().min(10).max(200).optional(),
 })
+  .refine((d) => (d.newPassword ? isStrongPassword(d.newPassword) : true), { message: 'weak_password' })
 
 app.get('/admin/users', requireAuth, requireAdmin, (_req, res) => {
   const users = db.listUsers().map((u) => {
@@ -767,10 +946,15 @@ app.delete('/admin/users/:id', requireAuth, requireAdmin, (req, res) => {
 
 // Admin: audit log
 app.get('/admin/audit', requireAuth, requireAdmin, (req, res) => {
-  const limit = typeof req.query.limit === 'string' ? Number(req.query.limit) : 10
-  const offset = typeof req.query.offset === 'string' ? Number(req.query.offset) : 0
-  const safeLimit = Number.isFinite(limit) ? Math.min(500, Math.max(1, limit)) : 10
-  const safeOffset = Number.isFinite(offset) ? Math.max(0, offset) : 0
+  const q = parseQuery(
+    req,
+    z.object({
+      limit: z.coerce.number().optional().default(10),
+      offset: z.coerce.number().optional().default(0),
+    }),
+  )
+  const safeLimit = Math.min(500, Math.max(1, Math.floor(q.limit)))
+  const safeOffset = Math.max(0, Math.floor(q.offset))
   const logs = db.listAuditWithActorPaged(safeLimit, safeOffset)
   const total = db.countAudit()
   return res.json({ logs, total, limit: safeLimit, offset: safeOffset })
@@ -848,10 +1032,15 @@ function readLastNdjson(filePath: string, limit: number) {
 }
 
 app.get('/admin/errors', requireAuth, requireAdmin, (req, res) => {
-  const limit = typeof req.query.limit === 'string' ? Number(req.query.limit) : 10
-  const offset = typeof req.query.offset === 'string' ? Number(req.query.offset) : 0
-  const safeLimit = Number.isFinite(limit) ? Math.min(2000, Math.max(1, limit)) : 10
-  const safeOffset = Number.isFinite(offset) ? Math.max(0, offset) : 0
+  const q = parseQuery(
+    req,
+    z.object({
+      limit: z.coerce.number().optional().default(10),
+      offset: z.coerce.number().optional().default(0),
+    }),
+  )
+  const safeLimit = Math.min(2000, Math.max(1, Math.floor(q.limit)))
+  const safeOffset = Math.max(0, Math.floor(q.offset))
 
   if (!fs.existsSync(ERROR_LOG_PATH)) return res.json({ errors: [], total: 0, limit: safeLimit, offset: safeOffset })
   const raw = fs.readFileSync(ERROR_LOG_PATH, 'utf-8')
@@ -872,7 +1061,8 @@ app.get('/admin/errors', requireAuth, requireAdmin, (req, res) => {
 })
 
 app.get('/admin/errors/download', requireAuth, requireAdmin, (req, res) => {
-  const format = typeof req.query.format === 'string' ? req.query.format : 'ndjson'
+  const q = parseQuery(req, z.object({ format: z.enum(['ndjson', 'json']).optional().default('ndjson') }))
+  const format = q.format
   const stamp = new Date().toISOString().replace(/[:.]/g, '-')
   if (format === 'json') {
     const errors = readLastNdjson(ERROR_LOG_PATH, 5000)
@@ -904,6 +1094,15 @@ const planningUpsertSchema = z.object({
 // Central error handler (must be after routes)
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  if (err instanceof ZodError) {
+    return res.status(400).json({
+      error: 'invalid_input',
+      issues: err.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+    })
+  }
+  if (err instanceof ApiError) {
+    return res.status(err.status).json({ error: err.code, ...(err.details != null ? { details: err.details } : {}) })
+  }
   appendErrorLog({
     ts: Date.now(),
     type: 'express',

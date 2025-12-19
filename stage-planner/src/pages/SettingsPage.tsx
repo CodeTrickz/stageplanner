@@ -12,8 +12,16 @@ export function SettingsPage() {
     setWeekStart,
     timeFormat,
     setTimeFormat,
+    startPage,
+    setStartPage,
+    weekViewMode,
+    setWeekViewMode,
     defaultTaskMinutes,
     setDefaultTaskMinutes,
+    defaultPriority,
+    setDefaultPriority,
+    defaultStatus,
+    setDefaultStatus,
     workdayStart,
     setWorkdayStart,
     workdayEnd,
@@ -22,6 +30,18 @@ export function SettingsPage() {
     setCompactMode,
     reduceMotion,
     setReduceMotion,
+    autoExtractTextOnOpen,
+    setAutoExtractTextOnOpen,
+    ocrLanguage,
+    setOcrLanguage,
+    errorLoggingEnabled,
+    setErrorLoggingEnabled,
+    errorLogRetentionDays,
+    setErrorLogRetentionDays,
+    errorLogMaxEntries,
+    setErrorLogMaxEntries,
+    idleLogoutMinutes,
+    setIdleLogoutMinutes,
   } = useSettings()
   const { token, user, login } = useAuth()
 
@@ -30,13 +50,42 @@ export function SettingsPage() {
       mode,
       weekStart,
       timeFormat,
+      startPage,
+      weekViewMode,
       defaultTaskMinutes,
+      defaultPriority,
+      defaultStatus,
       workdayStart,
       workdayEnd,
       compactMode,
       reduceMotion,
+      autoExtractTextOnOpen,
+      ocrLanguage,
+      errorLoggingEnabled,
+      errorLogRetentionDays,
+      errorLogMaxEntries,
+      idleLogoutMinutes,
     }),
-    [mode, weekStart, timeFormat, defaultTaskMinutes, workdayStart, workdayEnd, compactMode, reduceMotion],
+    [
+      mode,
+      weekStart,
+      timeFormat,
+      startPage,
+      weekViewMode,
+      defaultTaskMinutes,
+      defaultPriority,
+      defaultStatus,
+      workdayStart,
+      workdayEnd,
+      compactMode,
+      reduceMotion,
+      autoExtractTextOnOpen,
+      ocrLanguage,
+      errorLoggingEnabled,
+      errorLogRetentionDays,
+      errorLogMaxEntries,
+      idleLogoutMinutes,
+    ],
   )
   const lastSentRef = useRef<any>(null)
   const debounceRef = useRef<number | null>(null)
@@ -182,6 +231,27 @@ export function SettingsPage() {
 
       <Paper sx={{ p: 2 }}>
         <Stack spacing={2}>
+          <Typography sx={{ fontWeight: 900 }}>Navigatie</Typography>
+          <TextField
+            select
+            label="Startpagina na login"
+            value={startPage}
+            onChange={(e) => setStartPage(e.target.value as any)}
+            sx={{ maxWidth: 360 }}
+            helperText="Waar je standaard landt na inloggen (en bij ‘/’)."
+          >
+            <MenuItem value="/dashboard">Dashboard</MenuItem>
+            <MenuItem value="/planning">Planning</MenuItem>
+            <MenuItem value="/week">Week</MenuItem>
+            <MenuItem value="/taken">Taken</MenuItem>
+            <MenuItem value="/bestanden">Bestanden</MenuItem>
+            <MenuItem value="/notities">Notities</MenuItem>
+          </TextField>
+        </Stack>
+      </Paper>
+
+      <Paper sx={{ p: 2 }}>
+        <Stack spacing={2}>
           <Typography sx={{ fontWeight: 900 }}>Planning voorkeuren</Typography>
           <TextField
             select
@@ -202,6 +272,17 @@ export function SettingsPage() {
           >
             <MenuItem value="24h">24-uurs (14:30)</MenuItem>
             <MenuItem value="12h">12-uurs (2:30 PM)</MenuItem>
+          </TextField>
+          <TextField
+            select
+            label="Weekweergave"
+            value={weekViewMode}
+            onChange={(e) => setWeekViewMode(e.target.value as any)}
+            sx={{ maxWidth: 280 }}
+            helperText="‘Werkweek’ toont altijd maandag t/m vrijdag."
+          >
+            <MenuItem value="full">Volledige week (7 dagen)</MenuItem>
+            <MenuItem value="workweek">Werkweek (5 dagen)</MenuItem>
           </TextField>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <TextField
@@ -230,9 +311,102 @@ export function SettingsPage() {
             sx={{ maxWidth: 280 }}
             helperText="Bij “Nieuw item” wordt deze duur gebruikt."
           />
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+            <TextField
+              select
+              label="Standaard prioriteit (nieuw item)"
+              value={defaultPriority}
+              onChange={(e) => setDefaultPriority(e.target.value as any)}
+              fullWidth
+            >
+              <MenuItem value="low">Low</MenuItem>
+              <MenuItem value="medium">Medium</MenuItem>
+              <MenuItem value="high">High</MenuItem>
+            </TextField>
+            <TextField
+              select
+              label="Standaard status (nieuw item)"
+              value={defaultStatus}
+              onChange={(e) => setDefaultStatus(e.target.value as any)}
+              fullWidth
+            >
+              <MenuItem value="todo">Todo</MenuItem>
+              <MenuItem value="in_progress">In progress</MenuItem>
+              <MenuItem value="done">Done</MenuItem>
+            </TextField>
+          </Stack>
           <Typography variant="body2" color="text.secondary">
             Deze instellingen worden lokaal opgeslagen in je browser.
           </Typography>
+        </Stack>
+      </Paper>
+
+      <Paper sx={{ p: 2 }}>
+        <Stack spacing={2}>
+          <Typography sx={{ fontWeight: 900 }}>Bestanden / preview</Typography>
+          <FormControlLabel
+            control={<Switch checked={autoExtractTextOnOpen} onChange={(e) => setAutoExtractTextOnOpen(e.target.checked)} />}
+            label="Automatisch tekst extract/OCR bij openen (PDF/afbeeldingen)"
+          />
+          <TextField
+            label="OCR taal (Tesseract)"
+            value={ocrLanguage}
+            onChange={(e) => setOcrLanguage(e.target.value)}
+            sx={{ maxWidth: 360 }}
+            helperText="Voorbeelden: eng, nld, deu, fra. (Tesseract downloadt taaldata bij eerste gebruik.)"
+          />
+        </Stack>
+      </Paper>
+
+      <Paper sx={{ p: 2 }}>
+        <Stack spacing={2}>
+          <Typography sx={{ fontWeight: 900 }}>Privacy / diagnose</Typography>
+          <FormControlLabel
+            control={<Switch checked={errorLoggingEnabled} onChange={(e) => setErrorLoggingEnabled(e.target.checked)} />}
+            label="Fouten lokaal loggen (voor troubleshooting / admin)"
+          />
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+            <TextField
+              label="Bewaar errors (dagen)"
+              type="number"
+              value={errorLogRetentionDays}
+              onChange={(e) => setErrorLogRetentionDays(Math.max(0, Math.min(365, Number(e.target.value) || 0)))}
+              inputProps={{ min: 0, max: 365, step: 1 }}
+              fullWidth
+              helperText="0 = oneindig bewaren"
+              disabled={!errorLoggingEnabled}
+            />
+            <TextField
+              label="Max errors (aantal)"
+              type="number"
+              value={errorLogMaxEntries}
+              onChange={(e) => setErrorLogMaxEntries(Math.max(50, Math.min(5000, Number(e.target.value) || 500)))}
+              inputProps={{ min: 50, max: 5000, step: 50 }}
+              fullWidth
+              helperText="Oudste entries worden verwijderd zodra je erover gaat."
+              disabled={!errorLoggingEnabled}
+            />
+          </Stack>
+        </Stack>
+      </Paper>
+
+      <Paper sx={{ p: 2 }}>
+        <Stack spacing={2}>
+          <Typography sx={{ fontWeight: 900 }}>Sessie / beveiliging</Typography>
+          <TextField
+            select
+            label="Automatisch uitloggen bij inactiviteit"
+            value={idleLogoutMinutes}
+            onChange={(e) => setIdleLogoutMinutes(Number(e.target.value) || 0)}
+            sx={{ maxWidth: 360 }}
+            helperText="Handig op gedeelde pc. Let op: token-expiry blijft altijd gelden."
+          >
+            <MenuItem value={0}>Nooit</MenuItem>
+            <MenuItem value={15}>15 minuten</MenuItem>
+            <MenuItem value={30}>30 minuten</MenuItem>
+            <MenuItem value={60}>60 minuten</MenuItem>
+            <MenuItem value={120}>120 minuten</MenuItem>
+          </TextField>
         </Stack>
       </Paper>
 

@@ -36,4 +36,20 @@ export function minutesToTime(m: number) {
   return `${hh}:${mm}`
 }
 
+export function formatTimeHm(hm: string, opts?: { format?: '24h' | '12h' }) {
+  const fmt = opts?.format ?? '24h'
+  if (fmt === '24h') return hm
+  const [hhStr, mmStr] = String(hm || '').split(':')
+  const hh = Number(hhStr)
+  const mm = Number(mmStr)
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return hm
+  const h12 = ((hh + 11) % 12) + 1
+  const ampm = hh >= 12 ? 'PM' : 'AM'
+  return `${h12}:${String(mm).padStart(2, '0')} ${ampm}`
+}
+
+export function formatTimeRange(start: string, end: string, opts?: { format?: '24h' | '12h' }) {
+  return `${formatTimeHm(start, opts)}–${formatTimeHm(end, opts)}`
+}
+
 

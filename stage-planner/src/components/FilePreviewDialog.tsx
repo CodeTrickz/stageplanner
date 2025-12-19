@@ -9,6 +9,7 @@ import { useObjectUrl } from '../hooks/useObjectUrl'
 import { fileCategory, formatBytes } from '../utils/files'
 import { db } from '../db/db'
 import Tesseract from 'tesseract.js'
+import { useSettings } from '../app/settings'
 // pdfjs-dist v3.x
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
@@ -34,6 +35,7 @@ export function FilePreviewDialog({
   file: StoredFile | null
   onClose: () => void
 }) {
+  const { autoExtractTextOnOpen, ocrLanguage } = useSettings()
   const url = useObjectUrl(file?.data ?? null)
   const cat = useMemo(() => (file ? fileCategory(file) : 'other'), [file])
   const [text, setText] = useState<string | null>(null)
@@ -107,7 +109,8 @@ export function FilePreviewDialog({
     try {
       let extracted = ''
       if (cat === 'images') {
-        const { data } = await Tesseract.recognize(file.data, 'eng')
+        const lang = (ocrLanguage || 'eng').trim() || 'eng'
+        const { data } = await Tesseract.recognize(file.data, lang)
         extracted = data.text || ''
       } else if (cat === 'pdf') {
         // Extract embedded text (fast). For scanned PDFs OCR is more work; this covers most PDFs.
@@ -139,6 +142,27 @@ export function FilePreviewDialog({
       setOcrText(e instanceof Error ? e.message : 'ocr_failed')
     }
   }
+
+  // Auto run OCR/extract on open (only if not cached yet)
+  useEffect(() => {
+    let cancelled = false
+    async function maybeAuto() {
+      if (!open) return
+      if (!autoExtractTextOnOpen) return
+      if (!file?.id) return
+      if (!(cat === 'images' || cat === 'pdf')) return
+      if (ocrStatus === 'loading' || ocrStatus === 'done') return
+      const owner = (file as any)?.ownerUserId || '__local__'
+      const cached = await db.ocr.where('[ownerUserId+fileId]').equals([owner, file.id] as any).first()
+      if (cached) return
+      if (!cancelled) await runOcr()
+    }
+    void maybeAuto()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, autoExtractTextOnOpen, file?.id, cat, ocrLanguage])
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">

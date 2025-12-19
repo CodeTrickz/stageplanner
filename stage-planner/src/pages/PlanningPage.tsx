@@ -67,7 +67,7 @@ function toDraft(item: PlanningItem): Draft {
 export function PlanningPage() {
   const { user } = useAuth()
   const token = useApiToken()
-  const { defaultTaskMinutes, workdayStart } = useSettings()
+  const { defaultTaskMinutes, workdayStart, defaultPriority, defaultStatus, timeFormat } = useSettings()
   const userId = (user as any)?.id as string
   const ownerUserId = userId || '__local__'
   const [date, setDate] = useState(() => yyyyMmDdLocal(new Date()))
@@ -78,8 +78,8 @@ export function PlanningPage() {
     end: '10:00',
     title: '',
     notes: '',
-    priority: 'medium',
-    status: 'todo',
+    priority: defaultPriority ?? 'medium',
+    status: defaultStatus ?? 'todo',
     tags: '',
   }))
 
@@ -165,8 +165,8 @@ export function PlanningPage() {
       end: endStr,
       title: '',
       notes: '',
-      priority: 'medium',
-      status: 'todo',
+      priority: defaultPriority ?? 'medium',
+      status: defaultStatus ?? 'todo',
       tags: '',
     })
     setOpen(true)
@@ -286,6 +286,7 @@ export function PlanningPage() {
               setDraft(toDraft(full))
               setOpen(true)
             }}
+            timeFormat={timeFormat}
           />
         </Box>
       </Stack>

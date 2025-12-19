@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { db } from '../db/db'
+import { useSettings } from '../app/settings'
 
 type User = {
   id: string
@@ -63,9 +64,8 @@ function tokenExpiresAt(token: string): number | null {
   return exp * 1000
 }
 
-const IDLE_TIMEOUT_MS = 30 * 60 * 1000 // 30 minutes
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const { idleLogoutMinutes } = useSettings()
   const [state, setState] = useState<AuthState | null>(null)
   const idleTimer = useRef<number | null>(null)
   const logoutTimer = useRef<number | null>(null)
@@ -116,13 +116,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Idle timeout: log out after inactivity
   useEffect(() => {
+    const minutes = typeof idleLogoutMinutes === 'number' ? idleLogoutMinutes : 30
+    const ms = Math.max(0, Math.round(minutes)) * 60 * 1000
+    // 0 = never auto-logout on idle
+    if (ms === 0) return
+
     function resetIdle() {
       if (!state) return
       if (idleTimer.current) window.clearTimeout(idleTimer.current)
       idleTimer.current = window.setTimeout(() => {
         setState(null)
         localStorage.removeItem(LS_KEY)
-      }, IDLE_TIMEOUT_MS)
+      }, ms)
     }
 
     if (!state) return
@@ -137,7 +142,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       for (const ev of events) window.removeEventListener(ev, resetIdle as any)
     }
-  }, [state])
+  }, [state, idleLogoutMinutes])
 
   const value = useMemo<AuthContextValue>(
     () => ({

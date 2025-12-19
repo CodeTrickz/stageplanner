@@ -10,16 +10,18 @@ import { addDays, dateFromYmdLocal, startOfWeekMonday, startOfWeekSunday, yyyyMm
 
 export function WeekPage() {
   const [anchor, setAnchor] = useState(() => yyyyMmDdLocal(new Date()))
-  const { weekStart, workdayStart } = useSettings()
+  const { weekStart, workdayStart, weekViewMode, timeFormat } = useSettings()
   const { user } = useAuth()
   const userId = (user as any)?.id as string
 
   const weekStartYmd = useMemo(() => {
     const base = dateFromYmdLocal(anchor)
-    const start = weekStart === 'sunday' ? startOfWeekSunday(base) : startOfWeekMonday(base)
+    const start =
+      weekViewMode === 'workweek' ? startOfWeekMonday(base) : weekStart === 'sunday' ? startOfWeekSunday(base) : startOfWeekMonday(base)
     return yyyyMmDdLocal(start)
-  }, [anchor, weekStart])
-  const weekEnd = useMemo(() => yyyyMmDdLocal(addDays(dateFromYmdLocal(weekStartYmd), 6)), [weekStartYmd])
+  }, [anchor, weekStart, weekViewMode])
+  const dayCount = weekViewMode === 'workweek' ? 5 : 7
+  const weekEnd = useMemo(() => yyyyMmDdLocal(addDays(dateFromYmdLocal(weekStartYmd), dayCount - 1)), [weekStartYmd, dayCount])
 
   const items = useLiveQuery(async () => {
     // lexicographic works for YYYY-MM-DD
@@ -29,13 +31,13 @@ export function WeekPage() {
 
   const days = useMemo(() => {
     const start = dateFromYmdLocal(weekStartYmd)
-    return Array.from({ length: 7 }).map((_, i) => {
+    return Array.from({ length: dayCount }).map((_, i) => {
       const d = addDays(start, i)
       const ymd = yyyyMmDdLocal(d)
       const label = d.toLocaleDateString(undefined, { weekday: 'short', day: '2-digit', month: '2-digit' })
       return { ymd, label }
     })
-  }, [weekStartYmd])
+  }, [weekStartYmd, dayCount])
 
   return (
     <Box sx={{ display: 'grid', gap: 2 }}>
@@ -84,6 +86,7 @@ export function WeekPage() {
         onMove={async (it, next) => {
           await db.planning.update(Number(it.id), { ...next, updatedAt: Date.now() } as Partial<PlanningItem>)
         }}
+        timeFormat={timeFormat}
       />
     </Box>
   )

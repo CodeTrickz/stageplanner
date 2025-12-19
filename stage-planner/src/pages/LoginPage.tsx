@@ -3,11 +3,13 @@ import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { API_BASE } from '../api/client'
 import { useAuth } from '../auth/auth'
+import { useSettings } from '../app/settings'
 
 const API = API_BASE
 
 export function LoginPage() {
   const { login } = useAuth()
+  const { startPage } = useSettings()
   const nav = useNavigate()
   const [params] = useSearchParams()
   const [mode, setMode] = useState<'login' | 'register'>('login')
@@ -51,7 +53,7 @@ export function LoginPage() {
 
       login(data.token, data.user)
       const next = params.get('next')
-      nav(next ? decodeURIComponent(next) : '/planning', { replace: true })
+      nav(next ? decodeURIComponent(next) : (startPage || '/dashboard'), { replace: true })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'login_failed')
     } finally {

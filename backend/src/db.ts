@@ -68,6 +68,19 @@ export type DbAuditWithActor = DbAudit & {
   actorUsername: string | null
 }
 
+export type DbRefreshToken = {
+  id: string
+  userId: string
+  tokenHash: string
+  createdAt: number
+  expiresAt: number
+  revokedAt: number | null
+  replacedByTokenHash: string | null
+  lastUsedAt: number | null
+  ip: string | null
+  userAgent: string | null
+}
+
 export type DbPlanningItem = {
   id: string
   userId: string
@@ -91,6 +104,7 @@ type JsonState = {
   notes: DbNote[]
   shares: DbShare[]
   audit: DbAudit[]
+  refreshTokens: DbRefreshToken[]
 }
 
 function now() {
@@ -126,7 +140,7 @@ function readJson(): JsonState {
   const p = jsonPath()
   ensureDir(path.dirname(p))
   if (!fs.existsSync(p)) {
-    const init: JsonState = { groups: [], users: [], planning: [], notes: [], shares: [], audit: [] }
+    const init: JsonState = { groups: [], users: [], planning: [], notes: [], shares: [], audit: [], refreshTokens: [] }
     fs.writeFileSync(p, JSON.stringify(init, null, 2), 'utf-8')
     return init
   }
@@ -138,6 +152,7 @@ function readJson(): JsonState {
     notes: parsed.notes ?? [],
     shares: parsed.shares ?? [],
     audit: parsed.audit ?? [],
+    refreshTokens: (parsed as any).refreshTokens ?? [],
   } as JsonState
 }
 
@@ -218,6 +233,22 @@ function openSqlite() {
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_shares_unique ON shares(resource_type, resource_id, grantee_id);
     CREATE INDEX IF NOT EXISTS idx_shares_grantee ON shares(grantee_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS refresh_tokens (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      revoked_at INTEGER,
+      replaced_by_token_hash TEXT,
+      last_used_at INTEGER,
+      ip TEXT,
+      user_agent TEXT,
+      FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_refresh_user ON refresh_tokens(user_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_refresh_expires ON refresh_tokens(expires_at);
 
     CREATE TABLE IF NOT EXISTS audit_log (
       id TEXT PRIMARY KEY,
@@ -1645,6 +1676,101 @@ export const db = {
     }
     const s = readJson()
     return s.shares.find((sh) => sh.resourceType === resourceType && sh.resourceId === resourceId && sh.granteeId === userId) ?? null
+  },
+
+  // --- Refresh tokens (for short-lived access tokens) ---
+  createRefreshToken: (input: {
+    userId: string
+    tokenHash: string
+    createdAt: number
+    expiresAt: number
+    ip?: string | null
+    userAgent?: string | null
+  }): DbRefreshToken => {
+    const entry: DbRefreshToken = {
+      id: uuid(),
+      userId: input.userId,
+      tokenHash: input.tokenHash,
+      createdAt: input.createdAt,
+      expiresAt: input.expiresAt,
+      revokedAt: null,
+      replacedByTokenHash: null,
+      lastUsedAt: null,
+      ip: input.ip ?? null,
+      userAgent: input.userAgent ?? null,
+    }
+    if (sqliteDb) {
+      sqliteDb
+        .prepare(
+          `INSERT INTO refresh_tokens
+            (id, user_id, token_hash, created_at, expires_at, revoked_at, replaced_by_token_hash, last_used_at, ip, user_agent)
+           VALUES
+            (@id, @userId, @tokenHash, @createdAt, @expiresAt, NULL, NULL, NULL, @ip, @userAgent)`,
+        )
+        .run(entry)
+      return entry
+    }
+    const s = readJson()
+    s.refreshTokens.push(entry)
+    writeJson(s)
+    return entry
+  },
+
+  getRefreshTokenByHash: (tokenHash: string): DbRefreshToken | null => {
+    if (sqliteDb) {
+      const row = sqliteDb
+        .prepare(
+          `SELECT
+             id,
+             user_id as userId,
+             token_hash as tokenHash,
+             created_at as createdAt,
+             expires_at as expiresAt,
+             revoked_at as revokedAt,
+             replaced_by_token_hash as replacedByTokenHash,
+             last_used_at as lastUsedAt,
+             ip,
+             user_agent as userAgent
+           FROM refresh_tokens
+           WHERE token_hash = ?`,
+        )
+        .get(tokenHash) as DbRefreshToken | undefined
+      return row ?? null
+    }
+    const s = readJson()
+    return s.refreshTokens.find((t) => t.tokenHash === tokenHash) ?? null
+  },
+
+  touchRefreshToken: (tokenHash: string, lastUsedAt: number): boolean => {
+    if (sqliteDb) {
+      const info = sqliteDb.prepare(`UPDATE refresh_tokens SET last_used_at=? WHERE token_hash=?`).run(lastUsedAt, tokenHash)
+      return info.changes > 0
+    }
+    const s = readJson()
+    const idx = s.refreshTokens.findIndex((t) => t.tokenHash === tokenHash)
+    if (idx < 0) return false
+    s.refreshTokens[idx] = { ...s.refreshTokens[idx], lastUsedAt }
+    writeJson(s)
+    return true
+  },
+
+  revokeRefreshToken: (tokenHash: string, opts?: { revokedAt?: number; replacedByTokenHash?: string | null }): boolean => {
+    const revokedAt = opts?.revokedAt ?? now()
+    const replacedBy = opts?.replacedByTokenHash ?? null
+    if (sqliteDb) {
+      const info = sqliteDb
+        .prepare(`UPDATE refresh_tokens SET revoked_at=?, replaced_by_token_hash=? WHERE token_hash=? AND revoked_at IS NULL`)
+        .run(revokedAt, replacedBy, tokenHash)
+      return info.changes > 0
+    }
+    const s = readJson()
+    const idx = s.refreshTokens.findIndex((t) => t.tokenHash === tokenHash)
+    if (idx < 0) return false
+    const cur = s.refreshTokens[idx]
+    if (cur.revokedAt != null) return false
+    s.refreshTokens[idx] = { ...cur, revokedAt, replacedByTokenHash: replacedBy }
+    writeJson(s)
+    return true
   },
 }
 

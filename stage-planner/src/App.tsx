@@ -12,12 +12,14 @@ import { TasksOverviewPage } from './pages/TasksOverviewPage'
 import { WeekPage } from './pages/WeekPage'
 import { SharedPage } from './pages/SharedPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { useSettings } from './app/settings'
 
 export default function App() {
+  const { startPage } = useSettings()
   return (
     <AppShell>
       <Routes>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/" element={<Navigate to={startPage || '/dashboard'} replace />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/verify" element={<VerifyPage />} />
 
@@ -33,7 +35,7 @@ export default function App() {
           <Route path="/admin" element={<AdminPage />} />
         </Route>
 
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        <Route path="*" element={<Navigate to={startPage || '/dashboard'} replace />} />
       </Routes>
     </AppShell>
   )

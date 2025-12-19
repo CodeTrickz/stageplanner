@@ -1,4 +1,5 @@
 import { Box, Paper, Typography } from '@mui/material'
+import { formatTimeRange } from '../utils/date'
 
 function timeToMinutes(t: string) {
   const [hh, mm] = t.split(':').map((x) => Number(x))
@@ -80,9 +81,11 @@ function computeOverlapLayout(items: TimelineItem[]): LayoutItem[] {
 export function DayTimeline({
   items,
   onSelect,
+  timeFormat,
 }: {
   items: TimelineItem[]
   onSelect: (item: TimelineItem) => void
+  timeFormat?: '24h' | '12h'
 }) {
   const pxPerMinute = 1
   const height = 24 * 60 * pxPerMinute
@@ -98,12 +101,13 @@ export function DayTimeline({
           {/* hour lines */}
           {Array.from({ length: 25 }).map((_, h) => {
             const top = h * 60 * pxPerMinute
+            const label = timeFormat === '12h' ? (h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`) : `${String(h).padStart(2, '0')}:00`
             return (
               <Box key={h} sx={{ position: 'absolute', left: 0, right: 0, top }}>
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
                   <Box sx={{ width: labelWidth, pr: 1 }}>
                     <Typography variant="caption" color="text.secondary">
-                      {String(h).padStart(2, '0')}:00
+                      {label}
                     </Typography>
                   </Box>
                   <Box sx={{ flex: 1, height: 1, bgcolor: 'divider' }} />
@@ -158,7 +162,7 @@ export function DayTimeline({
                 }}
               >
                 <Typography variant="caption" sx={{ opacity: 0.9 }}>
-                  {it.start} – {it.end}
+                  {formatTimeRange(it.start, it.end, { format: timeFormat ?? '24h' })}
                 </Typography>
                 <Typography sx={{ fontWeight: 900, lineHeight: 1.2 }} noWrap>
                   {it.title}

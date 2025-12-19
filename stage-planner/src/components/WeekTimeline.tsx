@@ -12,7 +12,7 @@ export type WeekTimelineItem = {
   priority: 'low' | 'medium' | 'high'
   status: 'todo' | 'in_progress' | 'done'
 }
-import { minutesToTime } from '../utils/date'
+import { formatTimeRange, minutesToTime } from '../utils/date'
 
 function timeToMinutes(t: string) {
   const [hh, mm] = t.split(':').map((x) => Number(x))
@@ -87,10 +87,12 @@ function DraggableItem({
   li,
   labelWidth,
   onClick,
+  timeFormat,
 }: {
   li: LayoutItem
   labelWidth: number
   onClick: () => void
+  timeFormat?: '24h' | '12h'
 }) {
   const it = li.item
   const id = `item-${it.id}`
@@ -136,7 +138,7 @@ function DraggableItem({
       {...attributes}
     >
       <Typography variant="caption" sx={{ opacity: 0.9 }}>
-        {it.start}–{it.end}
+        {formatTimeRange(it.start, it.end, { format: timeFormat ?? '24h' })}
       </Typography>
       <Typography sx={{ fontWeight: 900, lineHeight: 1.2 }} noWrap>
         {it.title}
@@ -151,12 +153,14 @@ function DayColumn({
   items,
   onSelect,
   initialScrollM,
+  timeFormat,
 }: {
   ymd: string
   label: string
   items: WeekTimelineItem[]
   onSelect: (it: WeekTimelineItem) => void
   initialScrollM: number
+  timeFormat?: '24h' | '12h'
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `day-${ymd}` })
   const labelWidth = 38
@@ -196,12 +200,22 @@ function DayColumn({
         <Box sx={{ position: 'relative', height: 24 * 60 }}>
           {Array.from({ length: 25 }).map((_, h) => {
             const top = h * 60
+            const hourLabel =
+              timeFormat === '12h'
+                ? h === 0
+                  ? '12A'
+                  : h < 12
+                    ? `${h}A`
+                    : h === 12
+                      ? '12P'
+                      : `${h - 12}P`
+                : String(h).padStart(2, '0')
             return (
               <Box key={h} sx={{ position: 'absolute', left: 0, right: 0, top }}>
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
                   <Box sx={{ width: labelWidth, pr: 0.5 }}>
                     <Typography variant="caption" color="text.secondary">
-                      {String(h).padStart(2, '0')}
+                      {hourLabel}
                     </Typography>
                   </Box>
                   <Box sx={{ flex: 1, height: 1, bgcolor: 'divider' }} />
@@ -222,6 +236,7 @@ function DayColumn({
               li={li}
               labelWidth={labelWidth}
               onClick={() => onSelect(li.item)}
+              timeFormat={timeFormat}
             />
           ))}
         </Box>
@@ -236,12 +251,14 @@ export function WeekTimeline({
   onSelect,
   onMove,
   initialScrollM,
+  timeFormat,
 }: {
   weekDays: Array<{ ymd: string; label: string }>
   items: WeekTimelineItem[]
   onSelect: (it: WeekTimelineItem) => void
   onMove: (it: WeekTimelineItem, next: { date: string; start: string; end: string }) => Promise<void>
   initialScrollM?: number
+  timeFormat?: '24h' | '12h'
 }) {
   const byDate = new Map<string, WeekTimelineItem[]>()
   for (const it of items) {
@@ -284,6 +301,7 @@ export function WeekTimeline({
             items={(byDate.get(d.ymd) ?? []).sort((a, b) => (a.start + a.end).localeCompare(b.start + b.end))}
             onSelect={onSelect}
             initialScrollM={initialScrollM ?? 8 * 60}
+            timeFormat={timeFormat}
           />
         ))}
       </Box>

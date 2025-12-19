@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            stage-planner/package-lock.json
+
+      - name: Install system deps (canvas)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libcairo2-dev \
+            libpango1.0-dev \
+            libjpeg-dev \
+            libgif-dev \
+            librsvg2-dev
+
+      - name: Backend - install
+        working-directory: backend
+        run: npm ci
+
+      - name: Backend - build
+        working-directory: backend
+        run: npm run build --if-present
+
+      - name: Frontend - install
+        working-directory: stage-planner
+        run: npm ci
+
+      - name: Frontend - lint
+        working-directory: stage-planner
+        run: npm run lint
+
+      - name: Frontend - build
+        working-directory: stage-planner
+        run: npm run build
+

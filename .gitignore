@@ -1,0 +1,30 @@
+# --- Secrets / environment ---
+.env
+.env.*
+!.env.example
+!env.example
+
+# --- Node / JS ---
+**/node_modules/
+**/.vite/
+**/dist/
+**/dist-ssr/
+**/coverage/
+**/*.log
+
+# --- Databases / data ---
+**/*.sqlite
+**/*.sqlite3
+**/*.db
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

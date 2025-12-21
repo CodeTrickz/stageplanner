@@ -1,4 +1,4 @@
-name: CI
+name: Backend & Frontend CI
 
 on:
   push:
@@ -52,4 +52,3 @@ jobs:
       - name: Frontend - build
         working-directory: stage-planner
         run: npm run build
-

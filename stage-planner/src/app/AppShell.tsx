@@ -120,7 +120,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               flexShrink: 0
             }}
           >
-            Stage Planner
+            Planner
           </Typography>
           
           {/* Desktop: Full tabs with labels */}
@@ -186,9 +186,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 nav('/login')
               }}
             >
-              {/* Show email on desktop, just "Logout" on tablet */}
+              {/* Show username on desktop, just "Logout" on tablet */}
               <Box component="span" sx={{ display: { xs: 'none', lg: 'inline' } }}>
-                Logout ({user.email})
+                Logout ({user.username })
               </Box>
               <Box component="span" sx={{ display: { xs: 'none', sm: 'inline', lg: 'none' } }}>
                 Logout
@@ -240,7 +240,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               fontSize: { xs: '0.75rem', sm: '0.8125rem' }
             }}
           >
-            {user ? `Ingelogd als ${user.email}` : 'Niet ingelogd'}
+            {user ? `Ingelogd als ${user.username || 'User'}` : 'Niet ingelogd'}
           </Typography>
           <Box sx={{ mt: 1 }}>{statusChip}</Box>
         </Box>

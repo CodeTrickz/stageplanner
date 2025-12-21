@@ -21,7 +21,7 @@ export function useBackendHealth(enabled: boolean) {
         if (!cancelled) setOk(!!data?.ok)
       } catch (e) {
         if (!cancelled) setOk(false)
-        const errName = (e as any)?.name
+        const errName = e instanceof Error ? e.name : undefined
         const errMsg = e instanceof Error ? e.message : String(e)
         void logAppError({
           level: 'warn',

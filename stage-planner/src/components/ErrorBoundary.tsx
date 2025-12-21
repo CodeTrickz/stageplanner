@@ -13,7 +13,7 @@ export class ErrorBoundary extends React.Component<
     return { hasError: true, message: msg }
   }
 
-  componentDidCatch(error: unknown, info: any) {
+  componentDidCatch(error: unknown, info: React.ErrorInfo) {
     void logError('react', error, { componentStack: info?.componentStack })
   }
 

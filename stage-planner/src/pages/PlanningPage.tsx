@@ -57,7 +57,7 @@ function toDraft(item: PlanningItem): Draft {
     status: item.status ?? 'todo',
     tags: (() => {
       try {
-        const arr = JSON.parse((item as any).tagsJson || '[]') as string[]
+        const arr = JSON.parse(item.tagsJson || '[]') as string[]
         return (arr || []).join(', ')
       } catch {
         return ''
@@ -72,7 +72,7 @@ export function PlanningPage() {
   const { user } = useAuth()
   const token = useApiToken()
   const { defaultTaskMinutes, workdayStart, defaultPriority, defaultStatus, timeFormat } = useSettings()
-  const userId = (user as any)?.id as string
+  const userId = user?.id
   const ownerUserId = userId || '__local__'
   const [date, setDate] = useState(() => yyyyMmDdLocal(new Date()))
   const [open, setOpen] = useState(false)
@@ -97,19 +97,19 @@ export function PlanningPage() {
   )
 
   const notes = useLiveQuery(async () => {
-    const list = await db.notes.where('ownerUserId').equals(ownerUserId as any).toArray()
+    const list = await db.notes.where('ownerUserId').equals(ownerUserId).toArray()
     list.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
     return list
   }, [ownerUserId])
 
   const files = useLiveQuery(async () => {
-    const list = await db.files.where('ownerUserId').equals(ownerUserId as any).toArray()
+    const list = await db.files.where('ownerUserId').equals(ownerUserId).toArray()
     list.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
     return list
   }, [ownerUserId])
 
   const metas = useLiveQuery(async () => {
-    const list = await db.fileMeta.where('ownerUserId').equals(ownerUserId as any).toArray()
+    const list = await db.fileMeta.where('ownerUserId').equals(ownerUserId).toArray()
     return list
   }, [ownerUserId])
 
@@ -132,7 +132,7 @@ export function PlanningPage() {
     if (!draft.id) return { noteId: '', fileKeys: [] as string[] }
     const links = await db.links
       .where('[ownerUserId+fromId]')
-      .equals([ownerUserId, draft.id] as any)
+      .equals([ownerUserId, draft.id])
       .and((l) => l.fromType === 'planning')
       .toArray()
     const note = links.find((l) => l.toType === 'note')?.toKey ?? ''
@@ -347,7 +347,7 @@ export function PlanningPage() {
               </Stack>
               {(() => {
                 try {
-                  const tags = JSON.parse((it as any).tagsJson || '[]') as string[]
+                  const tags = JSON.parse(it.tagsJson || '[]') as string[]
                   return tags?.length ? (
                     <Stack direction="row" spacing={1} sx={{ mt: 1 }} useFlexGap flexWrap="wrap">
                       {tags.slice(0, 6).map((t) => (
@@ -420,7 +420,7 @@ export function PlanningPage() {
               const val = e.target.value as string
               const existing = await db.links
                 .where('[ownerUserId+fromId]')
-                .equals([ownerUserId, draft.id] as any)
+                .equals([ownerUserId, draft.id])
                 .and((l) => l.fromType === 'planning' && l.toType === 'note')
                 .toArray()
               await db.links.bulkDelete(existing.map((x) => x.id!).filter(Boolean))
@@ -454,7 +454,7 @@ export function PlanningPage() {
               if (!draft.id) return
               const existing = await db.links
                 .where('[ownerUserId+fromId]')
-                .equals([ownerUserId, draft.id] as any)
+                .equals([ownerUserId, draft.id])
                 .and((l) => l.fromType === 'planning' && l.toType === 'fileGroup')
                 .toArray()
               await db.links.bulkDelete(existing.map((x) => x.id!).filter(Boolean))
@@ -505,7 +505,7 @@ export function PlanningPage() {
                     select
                     label="Rechten"
                     value={sharePerm}
-                    onChange={(e) => setSharePerm(e.target.value as any)}
+                    onChange={(e) => setSharePerm(e.target.value as 'read' | 'write')}
                     sx={{ minWidth: 140 }}
                   >
                     <MenuItem value="read">Read</MenuItem>

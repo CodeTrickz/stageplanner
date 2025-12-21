@@ -12,7 +12,7 @@ export function WeekPage() {
   const [anchor, setAnchor] = useState(() => yyyyMmDdLocal(new Date()))
   const { weekStart, workdayStart, weekViewMode, timeFormat } = useSettings()
   const { user } = useAuth()
-  const userId = (user as any)?.id as string
+  const userId = user?.id
 
   const weekStartYmd = useMemo(() => {
     const base = dateFromYmdLocal(anchor)

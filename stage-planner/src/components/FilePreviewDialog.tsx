@@ -90,8 +90,8 @@ export function FilePreviewDialog({
       setOcrText(null)
       setOcrStatus('idle')
       if (!file?.id) return
-      const owner = (file as any)?.ownerUserId || '__local__'
-      const cached = await db.ocr.where('[ownerUserId+fileId]').equals([owner, file.id] as any).first()
+      const owner = file?.ownerUserId || '__local__'
+      const cached = await db.ocr.where('[ownerUserId+fileId]').equals([owner, file.id]).first()
       if (!cached) return
       if (!cancelled) {
         setOcrText(cached.text)
@@ -118,15 +118,15 @@ export function FilePreviewDialog({
         // Extract embedded text (fast). For scanned PDFs OCR is more work; this covers most PDFs.
         const buf = await file.data.arrayBuffer()
         // configure worker src for pdfjs
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        // @ts-expect-error - pdfjs types are incomplete
         pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js`
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+        // @ts-expect-error - pdfjs types are incomplete
         const doc = await pdfjsLib.getDocument({ data: buf }).promise
         let out = ''
         for (let i = 1; i <= doc.numPages; i++) {
           const page = await doc.getPage(i)
           const content = await page.getTextContent()
-          const strings = content.items.map((it: any) => it.str).filter(Boolean)
+          const strings = content.items.map((it: { str?: string }) => it.str).filter(Boolean) as string[]
           out += strings.join(' ') + '\n'
         }
         extracted = out.trim()
@@ -135,8 +135,8 @@ export function FilePreviewDialog({
       }
 
       const now = Date.now()
-      const owner = (file as any)?.ownerUserId || '__local__'
-      await db.ocr.put({ ownerUserId: owner, fileId: file.id, text: extracted, createdAt: now, updatedAt: now } as any)
+      const owner = file?.ownerUserId || '__local__'
+      await db.ocr.put({ ownerUserId: owner, fileId: file.id, text: extracted, createdAt: now, updatedAt: now })
       setOcrText(extracted)
       setOcrStatus('done')
     } catch (e) {
@@ -154,8 +154,8 @@ export function FilePreviewDialog({
       if (!file?.id) return
       if (!(cat === 'images' || cat === 'pdf')) return
       if (ocrStatus === 'loading' || ocrStatus === 'done') return
-      const owner = (file as any)?.ownerUserId || '__local__'
-      const cached = await db.ocr.where('[ownerUserId+fileId]').equals([owner, file.id] as any).first()
+      const owner = file?.ownerUserId || '__local__'
+      const cached = await db.ocr.where('[ownerUserId+fileId]').equals([owner, file.id]).first()
       if (cached) return
       if (!cancelled) await runOcr()
     }
@@ -163,8 +163,7 @@ export function FilePreviewDialog({
     return () => {
       cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, autoExtractTextOnOpen, file?.id, cat, ocrLanguage])
+  }, [open, autoExtractTextOnOpen, file, cat, ocrLanguage])
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" fullScreen={fullScreen}>

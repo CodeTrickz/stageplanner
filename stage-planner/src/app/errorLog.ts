@@ -2,7 +2,7 @@ import { db, type AppErrorLog } from '../db/db'
 
 const SETTINGS_KEY = 'stageplanner.settings.v1'
 
-function safeJson(meta: any) {
+function safeJson(meta: unknown) {
   try {
     return JSON.stringify(meta ?? {})
   } catch {
@@ -14,7 +14,7 @@ function getErrorLogSettings(): { enabled: boolean; retentionDays: number; maxEn
   try {
     const raw = localStorage.getItem(SETTINGS_KEY)
     if (!raw) return { enabled: true, retentionDays: 14, maxEntries: 500 }
-    const parsed = JSON.parse(raw) as any
+    const parsed = JSON.parse(raw) as Record<string, unknown>
     const enabled = typeof parsed?.errorLoggingEnabled === 'boolean' ? parsed.errorLoggingEnabled : true
     const retentionDays = typeof parsed?.errorLogRetentionDays === 'number' && Number.isFinite(parsed.errorLogRetentionDays) ? parsed.errorLogRetentionDays : 14
     const maxEntries = typeof parsed?.errorLogMaxEntries === 'number' && Number.isFinite(parsed.errorLogMaxEntries) ? parsed.errorLogMaxEntries : 500
@@ -33,7 +33,7 @@ function normalizeError(err: unknown) {
   return { message: typeof err === 'string' ? err : safeJson(err), stack: undefined as string | undefined }
 }
 
-export async function logAppError(input: Omit<AppErrorLog, 'id' | 'createdAt' | 'metaJson'> & { meta?: any; createdAt?: number }) {
+export async function logAppError(input: Omit<AppErrorLog, 'id' | 'createdAt' | 'metaJson'> & { meta?: unknown; createdAt?: number }) {
   try {
     const cfg = getErrorLogSettings()
     if (!cfg.enabled) return
@@ -66,7 +66,7 @@ export async function logAppError(input: Omit<AppErrorLog, 'id' | 'createdAt' | 
   }
 }
 
-export async function logError(source: AppErrorLog['source'], err: unknown, meta?: any) {
+export async function logError(source: AppErrorLog['source'], err: unknown, meta?: unknown) {
   const n = normalizeError(err)
   return logAppError({ level: 'error', source, message: n.message, stack: n.stack, meta })
 }

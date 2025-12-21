@@ -8,7 +8,7 @@ export function ErrorCapture() {
         level: 'error',
         source: 'window',
         message: ev.message || 'window.error',
-        stack: (ev.error as any)?.stack,
+        stack: ev.error instanceof Error ? ev.error.stack : undefined,
         meta: { filename: ev.filename, lineno: ev.lineno, colno: ev.colno },
       })
     }

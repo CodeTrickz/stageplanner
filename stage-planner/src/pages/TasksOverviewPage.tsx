@@ -20,7 +20,7 @@ import { db, type PlanningItem } from '../db/db'
 export function TasksOverviewPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
-  const userId = (user as any)?.id as string
+  const userId = user?.id
   const [q, setQ] = useState('')
   const [priority, setPriority] = useState<'all' | PlanningItem['priority']>('all')
   const [status, setStatus] = useState<'all' | PlanningItem['status']>('all')
@@ -79,7 +79,7 @@ export function TasksOverviewPage() {
             select
             label="Prioriteit"
             value={priority}
-            onChange={(e) => setPriority(e.target.value as any)}
+            onChange={(e) => setPriority(e.target.value as 'all' | PlanningItem['priority'])}
             sx={{ minWidth: 160 }}
           >
             <MenuItem value="all">Alles</MenuItem>
@@ -92,7 +92,7 @@ export function TasksOverviewPage() {
             select
             label="Status"
             value={status}
-            onChange={(e) => setStatus(e.target.value as any)}
+            onChange={(e) => setStatus(e.target.value as 'all' | PlanningItem['status'])}
             sx={{ minWidth: 180 }}
           >
             <MenuItem value="all">Alles</MenuItem>

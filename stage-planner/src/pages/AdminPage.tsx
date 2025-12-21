@@ -61,8 +61,8 @@ export function AdminPage() {
 
   const isAdmin = !!user?.isAdmin
 
-  const [audit, setAudit] = useState<any[] | null>(null)
-  const [backendErrors, setBackendErrors] = useState<any[] | null>(null)
+  const [audit, setAudit] = useState<Record<string, unknown>[] | null>(null)
+  const [backendErrors, setBackendErrors] = useState<Record<string, unknown>[] | null>(null)
   const [frontendOpenId, setFrontendOpenId] = useState<number | null>(null)
   const [backendOpenIdx, setBackendOpenIdx] = useState<number | null>(null)
   const [auditPage, setAuditPage] = useState(0)
@@ -375,7 +375,7 @@ export function AdminPage() {
         {audit && audit.length === 0 && <Alert severity="info">Geen logs.</Alert>}
         {audit && audit.length > 0 && (
           <Stack spacing={1}>
-            {audit.map((l: any) => (
+            {audit.map((l) => (
               <Paper key={l.id} variant="outlined" sx={{ p: 1.25 }}>
                 <Typography sx={{ fontWeight: 800 }}>
                   {new Date(l.createdAt).toLocaleString()} •{' '}
@@ -421,7 +421,7 @@ export function AdminPage() {
         {frontendErrors && frontendErrors.length === 0 && <Alert severity="info">Geen frontend errors.</Alert>}
         {frontendErrors && frontendErrors.length > 0 && (
           <Stack spacing={1}>
-            {frontendErrors.slice(0, 30).map((e: any) => {
+            {frontendErrors.slice(0, 30).map((e) => {
               const open = frontendOpenId === e.id
               return (
                 <Paper
@@ -491,7 +491,7 @@ export function AdminPage() {
         {backendErrors && backendErrors.length === 0 && <Alert severity="info">Geen backend errors.</Alert>}
         {backendErrors && backendErrors.length > 0 && (
           <Stack spacing={1}>
-            {backendErrors.slice(0, 20).map((e: any, idx: number) => {
+            {backendErrors.slice(0, 20).map((e, idx: number) => {
               const open = backendOpenIdx === idx
               const when = new Date(e.ts || Date.now()).toLocaleString()
               const headline = `${when} • ${e.type || 'error'} • ${e.message || ''}`.trim()

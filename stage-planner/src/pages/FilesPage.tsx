@@ -67,9 +67,9 @@ export function FilesPage() {
 
   const files = useLiveQuery(async () => {
     if (!ownerUserId) return []
-    const list = await db.files.where('ownerUserId').equals(ownerUserId as any).toArray()
+    const list = await db.files.where('ownerUserId').equals(ownerUserId).toArray()
     const scoped = list.filter((f) => {
-      const k = String((f as any).groupKey || '')
+      const k = String(f.groupKey || '')
       // New format: u:<ownerUserId>::...
       if (k.startsWith('u:')) return k.startsWith(`u:${ownerUserId}::`)
       // Legacy keys: fall back to ownerUserId column only
@@ -107,10 +107,10 @@ export function FilesPage() {
           action,
           files: list.slice(0, 50).map((f) => ({
             name: f.name,
-            type: (f as any).type ?? null,
-            size: (f as any).size ?? null,
-            groupKey: (f as any).groupKey ?? null,
-            version: (f as any).version ?? null,
+            type: f.type ?? null,
+            size: f.size ?? null,
+            groupKey: f.groupKey ?? null,
+            version: f.version ?? null,
           })),
         }),
       })
@@ -320,7 +320,7 @@ export function FilesPage() {
             select
             label="Sorteren"
             value={sort}
-            onChange={(e) => setSort(e.target.value as any)}
+            onChange={(e) => setSort(e.target.value)}
             sx={{ minWidth: 180 }}
           >
             <MenuItem value="recent">Recent</MenuItem>

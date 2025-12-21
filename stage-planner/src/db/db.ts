@@ -126,12 +126,13 @@ class AppDB extends Dexie {
         const all = await filesTable.toArray()
 
         // group existing files by groupKey, set incremental versions
-        const byKey = new Map<string, StoredFile[]>()
-        for (const f of all as any[]) {
-          const groupKey = `${f.name}::${f.type || 'application/octet-stream'}`
-          ;(f as any).groupKey = groupKey
+        const byKey = new Map<string, Partial<StoredFile>[]>()
+        for (const f of all) {
+          const file = f as Partial<StoredFile>
+          const groupKey = `${file.name}::${file.type || 'application/octet-stream'}`
+          file.groupKey = groupKey
           const arr = byKey.get(groupKey) ?? []
-          arr.push(f as any)
+          arr.push(file)
           byKey.set(groupKey, arr)
         }
 
@@ -139,8 +140,8 @@ class AppDB extends Dexie {
           list.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
           let v = 1
           for (const f of list) {
-            ;(f as any).version = v++
-            await filesTable.put(f as any)
+            f.version = v++
+            await filesTable.put(f as StoredFile)
           }
           const now = Date.now()
           await metaTable.put({
@@ -154,7 +155,7 @@ class AppDB extends Dexie {
 
         // notes: treat existing body as plain text; wrap in <p>
         const notesTable = tx.table('notes')
-        await notesTable.toCollection().modify((n: any) => {
+        await notesTable.toCollection().modify((n: Partial<NoteDraft>) => {
           if (typeof n.body === 'string' && !n.body.trim().startsWith('<')) {
             const escaped = n.body
               .replaceAll('&', '&amp;')
@@ -179,7 +180,7 @@ class AppDB extends Dexie {
         await tx
           .table('planning')
           .toCollection()
-          .modify((item: any) => {
+          .modify((item: Partial<PlanningItem>) => {
             if (!item.tagsJson) item.tagsJson = '[]'
           })
       })
@@ -196,10 +197,10 @@ class AppDB extends Dexie {
       })
       .upgrade(async (tx) => {
         // defaults: nothing required
-        await tx.table('planning').toCollection().modify((it: any) => {
+        await tx.table('planning').toCollection().modify((it: Partial<PlanningItem>) => {
           if (it.remoteId === undefined) it.remoteId = undefined
         })
-        await tx.table('notes').toCollection().modify((it: any) => {
+        await tx.table('notes').toCollection().modify((it: Partial<NoteDraft>) => {
           if (it.remoteId === undefined) it.remoteId = undefined
         })
       })
@@ -231,7 +232,7 @@ class AppDB extends Dexie {
         await tx
           .table('planning')
           .toCollection()
-          .modify((it: any) => {
+          .modify((it: Partial<PlanningItem>) => {
             if (it.ownerUserId === undefined) it.ownerUserId = null
           })
       })
@@ -253,7 +254,7 @@ class AppDB extends Dexie {
           await tx
             .table(table)
             .toCollection()
-            .modify((it: any) => {
+            .modify((it: Record<string, unknown>) => {
               if (it[field] === undefined) it[field] = null
             })
         }

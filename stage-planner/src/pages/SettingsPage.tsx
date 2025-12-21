@@ -87,7 +87,7 @@ export function SettingsPage() {
       idleLogoutMinutes,
     ],
   )
-  const lastSentRef = useRef<any>(null)
+  const lastSentRef = useRef<Record<string, unknown> | null>(null)
   const debounceRef = useRef<number | null>(null)
 
   // Best-effort: log settings changes to backend audit (only when logged in)
@@ -98,9 +98,9 @@ export function SettingsPage() {
       return
     }
 
-    const prev = lastSentRef.current as any
-    const next = settingsSnapshot as any
-    const changes: Record<string, any> = {}
+    const prev = lastSentRef.current as Record<string, unknown>
+    const next = settingsSnapshot as Record<string, unknown>
+    const changes: Record<string, { from: unknown; to: unknown }> = {}
     for (const k of Object.keys(next)) {
       if (prev[k] !== next[k]) changes[k] = { from: prev[k], to: next[k] }
     }
@@ -131,8 +131,8 @@ export function SettingsPage() {
 
   const [profile, setProfile] = useState({
     username: user?.username ?? '',
-    firstName: (user as any)?.firstName ?? '',
-    lastName: (user as any)?.lastName ?? '',
+    firstName: user?.firstName ?? '',
+    lastName: user?.lastName ?? '',
   })
 
   const [pw, setPw] = useState({ current: '', next: '', next2: '' })
@@ -144,10 +144,10 @@ export function SettingsPage() {
   useEffect(() => {
     setProfile({
       username: user?.username ?? '',
-      firstName: (user as any)?.firstName ?? '',
-      lastName: (user as any)?.lastName ?? '',
+      firstName: user?.firstName ?? '',
+      lastName: user?.lastName ?? '',
     })
-  }, [user?.username, (user as any)?.firstName, (user as any)?.lastName])
+  }, [user?.username, user?.firstName, user?.lastName])
 
   async function refreshMe() {
     if (!token) return
@@ -236,7 +236,7 @@ export function SettingsPage() {
             select
             label="Startpagina na login"
             value={startPage}
-            onChange={(e) => setStartPage(e.target.value as any)}
+            onChange={(e) => setStartPage(e.target.value)}
             sx={{ maxWidth: 360 }}
             helperText="Waar je standaard landt na inloggen (en bij ‘/’)."
           >
@@ -257,7 +257,7 @@ export function SettingsPage() {
             select
             label="Week start"
             value={weekStart}
-            onChange={(e) => setWeekStart(e.target.value as any)}
+            onChange={(e) => setWeekStart(e.target.value as 'monday' | 'sunday')}
             sx={{ maxWidth: 280 }}
           >
             <MenuItem value="monday">Maandag</MenuItem>
@@ -267,7 +267,7 @@ export function SettingsPage() {
             select
             label="Tijd formaat"
             value={timeFormat}
-            onChange={(e) => setTimeFormat(e.target.value as any)}
+            onChange={(e) => setTimeFormat(e.target.value as '24h' | '12h')}
             sx={{ maxWidth: 280 }}
           >
             <MenuItem value="24h">24-uurs (14:30)</MenuItem>
@@ -316,7 +316,7 @@ export function SettingsPage() {
               select
               label="Standaard prioriteit (nieuw item)"
               value={defaultPriority}
-              onChange={(e) => setDefaultPriority(e.target.value as any)}
+              onChange={(e) => setDefaultPriority(e.target.value as 'low' | 'medium' | 'high')}
               fullWidth
             >
               <MenuItem value="low">Low</MenuItem>
@@ -327,7 +327,7 @@ export function SettingsPage() {
               select
               label="Standaard status (nieuw item)"
               value={defaultStatus}
-              onChange={(e) => setDefaultStatus(e.target.value as any)}
+              onChange={(e) => setDefaultStatus(e.target.value as 'todo' | 'in_progress' | 'done')}
               fullWidth
             >
               <MenuItem value="todo">Todo</MenuItem>
@@ -438,7 +438,7 @@ export function SettingsPage() {
               </Stack>
               <TextField
                 label="Groep"
-                value={(user as any)?.activeGroupName || (user as any)?.activeGroupId || ''}
+                value={user?.activeGroupName || user?.activeGroupId || ''}
                 disabled
                 helperText="Je actieve groep bepaalt welke cloud data je ziet. Je persoonlijke groep = je eigen planner."
               />

@@ -36,7 +36,7 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
   const { user } = useAuth()
   const theme = useTheme()
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
-  const userId = (user as any)?.id as string
+  const userId = user?.id
   const ownerUserId = userId || null
   const [q, setQ] = useState('')
   const [results, setResults] = useState<Result[] | null>(null)
@@ -67,7 +67,7 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
       for (const it of planning) {
         const tags = (() => {
           try {
-            return (JSON.parse((it as any).tagsJson || '[]') as string[]).join(' ')
+            return (JSON.parse(it.tagsJson || '[]') as string[]).join(' ')
           } catch {
             return ''
           }
@@ -84,7 +84,7 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
         }
       }
 
-      const notes = await db.notes.where('ownerUserId').equals(ownerUserId as any).toArray()
+      const notes = await db.notes.where('ownerUserId').equals(ownerUserId).toArray()
       for (const n of notes) {
         const bodyTxt = stripHtml(n.body || '')
         const hay = `${n.subject} ${bodyTxt}`.toLowerCase()
@@ -99,8 +99,8 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
       }
 
       // files by group
-      const files = await db.files.where('ownerUserId').equals(ownerUserId as any).toArray()
-      const metas = await db.fileMeta.where('ownerUserId').equals(ownerUserId as any).toArray()
+      const files = await db.files.where('ownerUserId').equals(ownerUserId).toArray()
+      const metas = await db.fileMeta.where('ownerUserId').equals(ownerUserId).toArray()
       const metaByKey = new Map(metas.map((m) => [m.groupKey, m] as const))
       const seen = new Set<string>()
       for (const f of files) {
@@ -125,7 +125,7 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
       cancelled = true
       clearTimeout(t)
     }
-  }, [open, qq])
+  }, [open, qq, ownerUserId, userId])
 
   function go(r: Result) {
     onClose()

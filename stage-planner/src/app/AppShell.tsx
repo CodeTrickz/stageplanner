@@ -82,8 +82,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const [searchOpen, setSearchOpen] = React.useState(false)
 
-  const isAdmin = !!(user as any)?.isAdmin
-  const visibleTabs = tabs.filter((t) => (!(t as any).adminOnly || isAdmin))
+  const isAdmin = !!(user?.isAdmin)
+  const visibleTabs = tabs.filter((t) => (!('adminOnly' in t && t.adminOnly) || isAdmin))
 
   return (
     <Box sx={{ minHeight: '100%', display: 'flex', flexDirection: 'column' }}>

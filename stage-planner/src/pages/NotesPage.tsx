@@ -49,7 +49,7 @@ function safeFilename(name: string, fallback: string) {
   const trimmed = name.trim()
   if (!trimmed) return fallback
   return trimmed
-    .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, '_')
     .replace(/\s+/g, ' ')
     .slice(0, 80)
 }
@@ -78,21 +78,21 @@ export function NotesPage() {
 
   const notes = useLiveQuery(async () => {
     if (!ownerUserId) return []
-    const list = await db.notes.where('ownerUserId').equals(ownerUserId as any).toArray()
+    const list = await db.notes.where('ownerUserId').equals(ownerUserId).toArray()
     list.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
     return list
   }, [ownerUserId])
 
   const files = useLiveQuery(async () => {
     if (!ownerUserId) return []
-    const list = await db.files.where('ownerUserId').equals(ownerUserId as any).toArray()
+    const list = await db.files.where('ownerUserId').equals(ownerUserId).toArray()
     list.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
     return list
   }, [ownerUserId])
 
   const planning = useLiveQuery(async () => {
     const list = user?.id
-      ? await db.planning.where('ownerUserId').equals(user.id as any).toArray()
+      ? await db.planning.where('ownerUserId').equals(user.id).toArray()
       : await db.planning.toArray()
     list.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
     return list
@@ -434,7 +434,7 @@ export function NotesPage() {
                     select
                     label="Rechten"
                     value={sharePerm}
-                    onChange={(e) => setSharePerm(e.target.value as any)}
+                    onChange={(e) => setSharePerm(e.target.value as 'read' | 'write')}
                     sx={{ minWidth: 140 }}
                   >
                     <MenuItem value="read">Read</MenuItem>
@@ -459,7 +459,7 @@ export function NotesPage() {
                 // remove old planning links
                 const existing = await db.links
                   .where('[ownerUserId+fromId]')
-                  .equals([ownerUserId, draft.id] as any)
+                  .equals([ownerUserId, draft.id])
                   .and((l) => l.fromType === 'note' && l.toType === 'planning')
                   .toArray()
                 await db.links.bulkDelete(existing.map((x) => x.id!).filter(Boolean))

@@ -24,7 +24,7 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 
 const LS_KEY = 'stageplanner.auth'
 
-function decodeJwtPayload(token: string): any | null {
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
   try {
     const parts = token.split('.')
     if (parts.length < 2) return null
@@ -51,7 +51,7 @@ function enrichUserFromToken(token: string, user: User): User {
 async function claimLegacyLocalPlanning(userId: string) {
   try {
     // Claim any legacy items (ownerUserId is null) for current user.
-    await db.planning.where('ownerUserId').equals(null as any).modify({ ownerUserId: userId } as any)
+    await db.planning.where('ownerUserId').equals(null).modify({ ownerUserId: userId })
   } catch {
     // ignore
   }
@@ -140,7 +140,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         window.clearTimeout(idleTimer.current)
         idleTimer.current = null
       }
-      for (const ev of events) window.removeEventListener(ev, resetIdle as any)
+      for (const ev of events) window.removeEventListener(ev, resetIdle)
     }
   }, [state, idleLogoutMinutes])
 

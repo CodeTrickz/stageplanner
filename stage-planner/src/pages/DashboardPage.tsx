@@ -83,7 +83,7 @@ export function DashboardPage() {
   const nav = useNavigate()
   const { weekStart, timeFormat } = useSettings()
   const { user } = useAuth()
-  const userId = (user as any)?.id as string
+  const userId = user?.id
   const items = useLiveQuery(async () => {
     const list = await db.planning.where('ownerUserId').equals(userId).toArray()
     return list.sort(byDateTime)

@@ -53,7 +53,7 @@ export function NotePreviewDialog({
                 '& img': { maxWidth: '100%' },
                 '& table': { borderCollapse: 'collapse', width: '100%' },
                 '& td, & th': { border: '1px solid', borderColor: 'divider', p: 0.75 },
-                '& ul[data-type=\"taskList\"]': { listStyle: 'none', paddingLeft: 0 },
+                '& ul[data-type="taskList"]': { listStyle: 'none', paddingLeft: 0 },
               }}
               // Let op: dit rendert HTML. In deze stage-app is dat oké, maar in production wil je sanitizen.
               dangerouslySetInnerHTML={{ __html: note.body || '<p>(leeg)</p>' }}

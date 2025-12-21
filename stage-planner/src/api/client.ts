@@ -65,7 +65,7 @@ export async function apiFetch(path: string, options: RequestInit & { token?: st
         url: `${API_BASE}${path}`,
         path,
         method: (options.method || 'GET').toUpperCase(),
-        errName: (e as any)?.name,
+        errName: e instanceof Error ? e.name : undefined,
         errMessage: e instanceof Error ? e.message : String(e),
       },
     })

@@ -311,8 +311,8 @@ export function AdminPage() {
   }
 
   return (
-    <Box sx={{ display: 'grid', gap: 2 }}>
-      <Typography variant="h5" sx={{ fontWeight: 800 }}>
+    <Box sx={{ display: 'grid', gap: { xs: 1.5, sm: 2 } }}>
+      <Typography variant="h5" sx={{ fontWeight: 800, fontSize: { xs: '1.125rem', sm: '1.25rem' } }}>
         Admin – gebruikers
       </Typography>
 

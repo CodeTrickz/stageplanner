@@ -55,18 +55,19 @@ export function TasksOverviewPage() {
   }, [filtered])
 
   return (
-    <Box sx={{ display: 'grid', gap: 2 }}>
-      <Typography variant="h5" sx={{ fontWeight: 800 }}>
+    <Box sx={{ display: 'grid', gap: { xs: 1.5, sm: 2 } }}>
+      <Typography variant="h5" sx={{ fontWeight: 800, fontSize: { xs: '1.125rem', sm: '1.25rem' } }}>
         Taken-overzicht
       </Typography>
 
-      <Paper sx={{ p: 2 }}>
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center">
+      <Paper sx={{ p: { xs: 1.5, sm: 2 } }}>
+        <Stack direction="column" spacing={{ xs: 1.5, sm: 2 }} sx={{ '@media (min-width:900px)': { flexDirection: 'row', alignItems: 'center' } }}>
           <TextField
             fullWidth
             label="Zoeken"
             value={q}
             onChange={(e) => setQ(e.target.value)}
+            size="small"
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
@@ -81,7 +82,8 @@ export function TasksOverviewPage() {
             label="Prioriteit"
             value={priority}
             onChange={(e) => setPriority(e.target.value as 'all' | PlanningItem['priority'])}
-            sx={{ minWidth: 160 }}
+            size="small"
+            sx={{ width: { xs: '100%', md: 'auto' }, minWidth: { xs: '100%', md: 160 } }}
           >
             <MenuItem value="all">Alles</MenuItem>
             <MenuItem value="low">Low</MenuItem>
@@ -94,7 +96,8 @@ export function TasksOverviewPage() {
             label="Status"
             value={status}
             onChange={(e) => setStatus(e.target.value as 'all' | PlanningItem['status'])}
-            sx={{ minWidth: 180 }}
+            size="small"
+            sx={{ width: { xs: '100%', md: 'auto' }, minWidth: { xs: '100%', md: 180 } }}
           >
             <MenuItem value="all">Alles</MenuItem>
             <MenuItem value="todo">Todo</MenuItem>

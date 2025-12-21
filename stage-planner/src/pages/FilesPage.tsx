@@ -245,8 +245,8 @@ export function FilesPage() {
   }, [files, q, folder, sort, metaByKey])
 
   return (
-    <Box sx={{ display: 'grid', gap: 2 }}>
-      <Typography variant="h5" sx={{ fontWeight: 800 }}>
+    <Box sx={{ display: 'grid', gap: { xs: 1.5, sm: 2 } }}>
+      <Typography variant="h5" sx={{ fontWeight: 800, fontSize: { xs: '1.125rem', sm: '1.25rem' } }}>
         Bestanden
       </Typography>
 
@@ -256,12 +256,11 @@ export function FilesPage() {
         </Alert>
       )}
 
-      <Paper sx={{ p: 2 }}>
+      <Paper sx={{ p: { xs: 1.5, sm: 2 } }}>
         <Stack
-          direction={{ xs: 'column', sm: 'row' }}
-          spacing={2}
-          alignItems={{ xs: 'stretch', sm: 'center' }}
-          justifyContent="space-between"
+          direction="column"
+          spacing={{ xs: 1.5, sm: 2 }}
+          sx={{ '@media (min-width:600px)': { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' } }}
         >
           <Box>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
@@ -293,8 +292,8 @@ export function FilesPage() {
         </Stack>
       </Paper>
 
-      <Paper variant="outlined" sx={{ p: 2 }}>
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center">
+      <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 } }}>
+        <Stack direction="column" spacing={{ xs: 1.5, sm: 2 }} sx={{ '@media (min-width:900px)': { flexDirection: 'row', alignItems: 'center' } }}>
           <TextField
             label="Zoeken (naam/type/folder/labels)"
             value={q}

@@ -27,49 +27,53 @@ function Section({
 }) {
   const top = items.slice(0, 8)
   return (
-    <Paper variant="outlined" sx={{ p: 2 }}>
-      <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+    <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 } }}>
+      <Stack direction="column" spacing={{ xs: 1, sm: 1.5 }} sx={{ '@media (min-width:600px)': { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' } }}>
         <Stack direction="row" spacing={1} alignItems="center">
-          <Typography sx={{ fontWeight: 900 }}>{title}</Typography>
-          <Chip size="small" label={items.length} />
+          <Typography sx={{ fontWeight: 900, fontSize: { xs: '0.875rem', sm: '1rem' } }}>{title}</Typography>
+          <Chip size="small" label={items.length} sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }} />
         </Stack>
-        <Button size="small" onClick={onOpenAll}>
+        <Button size="small" onClick={onOpenAll} sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' }, alignSelf: { xs: 'flex-start', sm: 'auto' } }}>
           Bekijk alles
         </Button>
       </Stack>
-      <Divider sx={{ my: 1.5 }} />
+      <Divider sx={{ my: { xs: 1, sm: 1.5 } }} />
       {top.length === 0 ? (
-        <Alert severity="info">Geen items.</Alert>
+        <Alert severity="info" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>Geen items.</Alert>
       ) : (
-        <Stack spacing={1}>
+        <Stack spacing={{ xs: 0.75, sm: 1 }}>
           {top.map((it) => (
-            <Paper key={it.id} variant="outlined" sx={{ p: 1.25 }}>
-              <Stack direction="row" spacing={1} alignItems="center">
+            <Paper key={it.id} variant="outlined" sx={{ p: { xs: 1, sm: 1.25 } }}>
+              <Stack direction="column" spacing={{ xs: 0.5, sm: 1 }} sx={{ '@media (min-width:600px)': { flexDirection: 'row', alignItems: 'center' } }}>
                 <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography sx={{ fontWeight: 800 }} noWrap>
+                  <Typography sx={{ fontWeight: 800, fontSize: { xs: '0.8125rem', sm: '0.875rem' } }} noWrap>
                     {it.date} {formatTimeRange(it.start, it.end, { format: timeFormat })} • {it.title}
                   </Typography>
                   {it.notes && (
-                    <Typography variant="body2" color="text.secondary" noWrap>
+                    <Typography variant="body2" color="text.secondary" noWrap sx={{ fontSize: { xs: '0.75rem', sm: '0.8125rem' } }}>
                       {it.notes}
                     </Typography>
                   )}
                 </Box>
-                <Chip
-                  size="small"
-                  label={it.priority === 'high' ? 'High' : it.priority === 'low' ? 'Low' : 'Medium'}
-                  color={it.priority === 'high' ? 'error' : it.priority === 'low' ? 'default' : 'primary'}
-                  variant={it.priority === 'low' ? 'outlined' : 'filled'}
-                />
-                <Chip
-                  size="small"
-                  label={it.status === 'done' ? 'Done' : it.status === 'in_progress' ? 'In progress' : 'Todo'}
-                  color={it.status === 'done' ? 'success' : it.status === 'in_progress' ? 'warning' : 'default'}
-                  variant="outlined"
-                />
-                <IconButton aria-label="Open" onClick={() => onOpenItem(it)}>
-                  <LaunchIcon />
-                </IconButton>
+                <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0 }}>
+                  <Chip
+                    size="small"
+                    label={it.priority === 'high' ? 'High' : it.priority === 'low' ? 'Low' : 'Medium'}
+                    color={it.priority === 'high' ? 'error' : it.priority === 'low' ? 'default' : 'primary'}
+                    variant={it.priority === 'low' ? 'outlined' : 'filled'}
+                    sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' }, height: { xs: 20, sm: 24 } }}
+                  />
+                  <Chip
+                    size="small"
+                    label={it.status === 'done' ? 'Done' : it.status === 'in_progress' ? 'In progress' : 'Todo'}
+                    color={it.status === 'done' ? 'success' : it.status === 'in_progress' ? 'warning' : 'default'}
+                    variant="outlined"
+                    sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' }, height: { xs: 20, sm: 24 }, display: { xs: 'none', sm: 'flex' } }}
+                  />
+                  <IconButton aria-label="Open" onClick={() => onOpenItem(it)} size="small" sx={{ padding: { xs: '4px', sm: '8px' } }}>
+                    <LaunchIcon sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }} />
+                  </IconButton>
+                </Stack>
               </Stack>
             </Paper>
           ))}
@@ -109,24 +113,24 @@ export function DashboardPage() {
   }, [items, today, weekStartYmd, weekEnd])
 
   return (
-    <Box sx={{ display: 'grid', gap: 2 }}>
-      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }} justifyContent="space-between">
+    <Box sx={{ display: 'grid', gap: { xs: 1.5, sm: 2 } }}>
+      <Stack direction="column" spacing={{ xs: 1.5, sm: 2 }} sx={{ '@media (min-width:900px)': { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' } }}>
         <Box>
-          <Typography variant="h5" sx={{ fontWeight: 800 }}>
+          <Typography variant="h5" sx={{ fontWeight: 800, fontSize: { xs: '1.125rem', sm: '1.25rem' } }}>
             Dashboard
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
             Vandaag: <b>{today}</b> • Week: <b>{weekStartYmd}</b> – <b>{weekEnd}</b>
           </Typography>
         </Box>
-        <Button variant="outlined" onClick={() => nav('/taken')}>
+        <Button variant="outlined" onClick={() => nav('/taken')} size="small" sx={{ alignSelf: { xs: 'stretch', md: 'flex-start' } }}>
           Naar taken-overzicht
         </Button>
       </Stack>
 
       {!items && <Alert severity="info">Laden…</Alert>}
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' }, gap: 2 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr', gap: { xs: 1.5, sm: 2 }, '@media (min-width:1200px)': { gridTemplateColumns: '1fr 1fr' } }}>
         <Section
           title="Vandaag"
           items={computed.todayItems}

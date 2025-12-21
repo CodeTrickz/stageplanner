@@ -82,10 +82,10 @@ export function LoginPage() {
   }
 
   return (
-    <Box sx={{ display: 'grid', placeItems: 'center', minHeight: '60vh' }}>
-      <Paper sx={{ p: 3, width: 'min(520px, 100%)' }}>
-        <Stack spacing={2}>
-          <Typography variant="h5" sx={{ fontWeight: 900 }}>
+    <Box sx={{ display: 'grid', placeItems: 'center', minHeight: '60vh', px: { xs: 1, sm: 2 } }}>
+      <Paper sx={{ p: { xs: 2, sm: 3 }, width: '100%', maxWidth: { xs: '100%', sm: 520 } }}>
+        <Stack spacing={{ xs: 1.5, sm: 2 }}>
+          <Typography variant="h5" sx={{ fontWeight: 900, fontSize: { xs: '1.125rem', sm: '1.25rem' } }}>
             {mode === 'login' ? 'Inloggen' : 'Account maken'}
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -97,7 +97,7 @@ export function LoginPage() {
           {mode === 'register' && (
             <>
               <TextField label="Username" value={username} onChange={(e) => setUsername(e.target.value)} />
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+              <Stack direction="column" spacing={{ xs: 1.5, sm: 2 }} sx={{ '@media (min-width:600px)': { flexDirection: 'row' } }}>
                 <TextField label="Voornaam" value={firstName} onChange={(e) => setFirstName(e.target.value)} fullWidth />
                 <TextField label="Achternaam" value={lastName} onChange={(e) => setLastName(e.target.value)} fullWidth />
               </Stack>

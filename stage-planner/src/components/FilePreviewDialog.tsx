@@ -168,33 +168,41 @@ export function FilePreviewDialog({
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" fullScreen={fullScreen}>
-      <DialogTitle>
-        <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
-          <Box sx={{ minWidth: 0 }}>
-            <Typography sx={{ fontWeight: 800 }} noWrap>
+      <DialogTitle sx={{ p: { xs: 1.5, sm: 2 } }}>
+        <Stack direction="column" spacing={{ xs: 1, sm: 1.5 }} sx={{ '@media (min-width:600px)': { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' } }}>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography sx={{ fontWeight: 800, fontSize: { xs: '0.875rem', sm: '1rem' } }} noWrap>
               {file?.name ?? 'Preview'}
             </Typography>
             {file && (
-              <Typography variant="body2" color="text.secondary" noWrap>
+              <Typography variant="body2" color="text.secondary" noWrap sx={{ fontSize: { xs: '0.75rem', sm: '0.8125rem' } }}>
                 {file.type || 'onbekend'} • {formatBytes(file.size)} •{' '}
                 {new Date(file.createdAt).toLocaleString()}
               </Typography>
             )}
           </Box>
           {file && (
-            <Stack direction="row" spacing={1}>
+            <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
               {(cat === 'images' || cat === 'pdf') && (
                 <Button
                   variant="outlined"
+                  size="small"
                   startIcon={<PsychologyIcon />}
                   onClick={() => void runOcr()}
                   disabled={ocrStatus === 'loading'}
+                  sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}
                 >
-                  {cat === 'pdf' ? 'Extract tekst' : 'OCR'}
+                  <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>
+                    {cat === 'pdf' ? 'Extract tekst' : 'OCR'}
+                  </Box>
+                  <Box component="span" sx={{ display: { xs: 'inline', sm: 'none' } }}>
+                    {cat === 'pdf' ? 'Extract' : 'OCR'}
+                  </Box>
                 </Button>
               )}
               <Button
                 variant="outlined"
+                size="small"
                 startIcon={<DownloadIcon />}
                 onClick={() => downloadBlob(file.data, file.name)}
               >

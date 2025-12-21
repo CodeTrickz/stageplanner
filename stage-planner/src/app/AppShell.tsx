@@ -58,7 +58,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const nav = useNavigate()
   const { user, logout } = useAuth()
   const theme = useTheme()
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'))
+  // Responsive breakpoints: xs (<600px), sm (600-960px), md (960-1280px), lg (1280px+)
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm')) // < 600px
+  const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md')) // 600px - 960px
+  const isDesktop = useMediaQuery(theme.breakpoints.up('md')) // >= 960px
   const [drawerOpen, setDrawerOpen] = React.useState(false)
   const online = useOnlineStatus()
   const backendOk = useBackendHealth(!!user && online)
@@ -88,61 +91,120 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <Box sx={{ minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
       <AppBar position="sticky" elevation={0} color="inherit">
-        <Toolbar sx={{ gap: 1.5 }}>
-          {user && isMobile && (
+        <Toolbar 
+          sx={{ 
+            gap: { xs: 0.5, sm: 1, md: 1.5 }, 
+            minHeight: { xs: 56, sm: 64 },
+            px: { xs: 1, sm: 1.5, md: 2 }
+          }}
+        >
+          {/* Mobile & Tablet: Menu button */}
+          {user && (isMobile || isTablet) && (
             <IconButton
               edge="start"
               aria-label="Menu"
               onClick={() => setDrawerOpen(true)}
-              sx={{ mr: 0.5 }}
+              sx={{ mr: { xs: 0.5, sm: 1 } }}
+              size={isMobile ? 'small' : 'medium'}
             >
               <MenuIcon />
             </IconButton>
           )}
-          <Typography variant="h6" sx={{ fontWeight: 800 }}>
+          
+          {/* App title - responsive sizing */}
+          <Typography 
+            variant="h6" 
+            sx={{ 
+              fontWeight: 800, 
+              fontSize: { xs: '0.875rem', sm: '1rem', md: '1.125rem' },
+              flexShrink: 0
+            }}
+          >
             Stage Planner
           </Typography>
-          {user && !isMobile && (
+          
+          {/* Desktop: Full tabs with labels */}
+          {user && isDesktop && (
             <Tabs
               value={value}
               textColor="primary"
               indicatorColor="primary"
-              sx={{ ml: 1 }}
+              sx={{ 
+                ml: { md: 1, lg: 2 },
+                minHeight: { md: 48, lg: 64 },
+                '& .MuiTab-root': {
+                  minHeight: { md: 48, lg: 64 },
+                  fontSize: { md: '0.8125rem', lg: '0.875rem' },
+                  px: { md: 1.5, lg: 2 },
+                }
+              }}
             >
               {visibleTabs.map((t) => (
-                  <Tab
-                    key={t.to}
-                    value={t.to}
-                    label={t.label}
-                    icon={t.icon}
-                    iconPosition="start"
-                    component={RouterLink}
-                    to={t.to}
-                    sx={{ minHeight: 48 }}
-                  />
+                <Tab
+                  key={t.to}
+                  value={t.to}
+                  label={t.label}
+                  icon={t.icon}
+                  iconPosition="start"
+                  component={RouterLink}
+                  to={t.to}
+                />
               ))}
             </Tabs>
           )}
+          
           <Box sx={{ flex: 1 }} />
+          
+          {/* Status chip - hidden on mobile */}
           <Box sx={{ display: { xs: 'none', sm: 'block' } }}>{statusChip}</Box>
+          
+          {/* Search button */}
           {user && (
-            <IconButton aria-label="Zoek" onClick={() => setSearchOpen(true)}>
+            <IconButton 
+              aria-label="Zoek" 
+              onClick={() => setSearchOpen(true)} 
+              size={isMobile ? 'small' : 'medium'}
+              sx={{ ml: { xs: 0.5, sm: 1 } }}
+            >
               <SearchIcon />
             </IconButton>
           )}
+          
+          {/* Logout/Login button */}
           {user ? (
             <Button
               variant="outlined"
-              sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+              size={isMobile ? 'small' : 'medium'}
+              sx={{ 
+                display: { xs: 'none', sm: 'inline-flex' },
+                fontSize: { xs: '0.75rem', sm: '0.8125rem', md: '0.875rem' },
+                ml: { xs: 0.5, sm: 1 },
+                px: { xs: 1, sm: 1.5, md: 2 }
+              }}
               onClick={() => {
                 logout()
                 nav('/login')
               }}
             >
-              Logout ({user.email})
+              {/* Show email on desktop, just "Logout" on tablet */}
+              <Box component="span" sx={{ display: { xs: 'none', lg: 'inline' } }}>
+                Logout ({user.email})
+              </Box>
+              <Box component="span" sx={{ display: { xs: 'none', sm: 'inline', lg: 'none' } }}>
+                Logout
+              </Box>
             </Button>
           ) : (
-            <Button variant="contained" component={RouterLink} to="/login">
+            <Button 
+              variant="contained" 
+              component={RouterLink} 
+              to="/login" 
+              size={isMobile ? 'small' : 'medium'}
+              sx={{ 
+                fontSize: { xs: '0.75rem', sm: '0.8125rem', md: '0.875rem' },
+                px: { xs: 1, sm: 1.5, md: 2 }
+              }}
+            >
               Login
             </Button>
           )}
@@ -153,13 +215,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         anchor="left"
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        PaperProps={{ sx: { width: 320, maxWidth: '85vw' } }}
+        PaperProps={{ 
+          sx: { 
+            width: { xs: '85vw', sm: 300, md: 320 },
+            maxWidth: { xs: '85vw', sm: '90vw' }
+          } 
+        }}
       >
-        <Box sx={{ p: 2 }}>
-          <Typography variant="h6" sx={{ fontWeight: 900 }}>
+        <Box sx={{ p: { xs: 1.5, sm: 2 } }}>
+          <Typography 
+            variant="h6" 
+            sx={{ 
+              fontWeight: 900,
+              fontSize: { xs: '1rem', sm: '1.125rem' }
+            }}
+          >
             Stage Planner
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+          <Typography 
+            variant="body2" 
+            color="text.secondary" 
+            sx={{ 
+              mt: 0.25,
+              fontSize: { xs: '0.75rem', sm: '0.8125rem' }
+            }}
+          >
             {user ? `Ingelogd als ${user.email}` : 'Niet ingelogd'}
           </Typography>
           <Box sx={{ mt: 1 }}>{statusChip}</Box>
@@ -174,37 +254,68 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 setDrawerOpen(false)
                 nav(t.to)
               }}
+              sx={{
+                py: { xs: 1, sm: 1.25 },
+                px: { xs: 1.5, sm: 2 }
+              }}
             >
-              <ListItemIcon sx={{ minWidth: 40 }}>{t.icon}</ListItemIcon>
-              <ListItemText primary={t.label} />
+              <ListItemIcon 
+                sx={{ 
+                  minWidth: { xs: 36, sm: 40 },
+                  '& svg': {
+                    fontSize: { xs: '1.25rem', sm: '1.5rem' }
+                  }
+                }}
+              >
+                {t.icon}
+              </ListItemIcon>
+              <ListItemText 
+                primary={t.label}
+                primaryTypographyProps={{
+                  fontSize: { xs: '0.875rem', sm: '0.9375rem' },
+                  fontWeight: value === t.to ? 700 : 400
+                }}
+              />
             </ListItemButton>
           ))}
         </List>
         <Divider />
         {user ? (
-          <Box sx={{ p: 2 }}>
+          <Box sx={{ p: { xs: 1.5, sm: 2 } }}>
             <Button
               fullWidth
               variant="outlined"
+              size={isMobile ? 'small' : 'medium'}
               onClick={() => {
                 setDrawerOpen(false)
                 logout()
                 nav('/login')
+              }}
+              sx={{
+                fontSize: { xs: '0.875rem', sm: '0.9375rem' }
               }}
             >
               Logout
             </Button>
           </Box>
         ) : (
-          <Box sx={{ p: 2 }}>
-            <Button fullWidth variant="contained" onClick={() => nav('/login')}>
+          <Box sx={{ p: { xs: 1.5, sm: 2 } }}>
+            <Button 
+              fullWidth 
+              variant="contained" 
+              onClick={() => nav('/login')}
+              size={isMobile ? 'small' : 'medium'}
+              sx={{
+                fontSize: { xs: '0.875rem', sm: '0.9375rem' }
+              }}
+            >
               Login
             </Button>
           </Box>
         )}
       </Drawer>
 
-      <Container sx={{ py: { xs: 2, sm: 3 }, flex: 1, px: { xs: 1.5, sm: 2 } }}>{children}</Container>
+      <Container sx={{ py: 2, flex: 1, px: { xs: 1, sm: 1.5, md: 2 } }}>{children}</Container>
       <GlobalSearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} />
     </Box>
   )

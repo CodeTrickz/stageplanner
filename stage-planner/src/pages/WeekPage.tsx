@@ -40,22 +40,20 @@ export function WeekPage() {
   }, [weekStartYmd, dayCount])
 
   return (
-    <Box sx={{ display: 'grid', gap: 2 }}>
-      <Typography variant="h5" sx={{ fontWeight: 800 }}>
+    <Box sx={{ display: 'grid', gap: { xs: 1.5, sm: 2 } }}>
+      <Typography variant="h5" sx={{ fontWeight: 800, fontSize: { xs: '1.125rem', sm: '1.25rem' } }}>
         Week planning
       </Typography>
 
-      <Paper sx={{ p: 2 }}>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center" justifyContent="space-between">
-          <Stack direction="row" spacing={2} alignItems="center">
-            <Alert severity="info">
-              Sleep een taak om tijd te verschuiven (5-min stappen) of naar een andere dag.
-            </Alert>
-          </Stack>
-          <Stack direction="row" spacing={1} alignItems="center">
-            <Button onClick={() => setAnchor(yyyyMmDdLocal(addDays(dateFromYmdLocal(anchor), -7)))}>← Vorige</Button>
-            <Button onClick={() => setAnchor(yyyyMmDdLocal(new Date()))}>Vandaag</Button>
-            <Button onClick={() => setAnchor(yyyyMmDdLocal(addDays(dateFromYmdLocal(anchor), 7)))}>Volgende →</Button>
+      <Paper sx={{ p: { xs: 1.5, sm: 2 } }}>
+        <Stack direction="column" spacing={{ xs: 1.5, sm: 2 }} sx={{ '@media (min-width:600px)': { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' } }}>
+          <Alert severity="info" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+            Sleep een taak om tijd te verschuiven (5-min stappen) of naar een andere dag.
+          </Alert>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap', gap: { xs: 0.5, sm: 1 } }}>
+            <Button size="small" onClick={() => setAnchor(yyyyMmDdLocal(addDays(dateFromYmdLocal(anchor), -7)))}>← Vorige</Button>
+            <Button size="small" onClick={() => setAnchor(yyyyMmDdLocal(new Date()))}>Vandaag</Button>
+            <Button size="small" onClick={() => setAnchor(yyyyMmDdLocal(addDays(dateFromYmdLocal(anchor), 7)))}>Volgende →</Button>
           </Stack>
         </Stack>
       </Paper>

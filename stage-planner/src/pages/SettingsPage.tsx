@@ -207,12 +207,12 @@ export function SettingsPage() {
   }
 
   return (
-    <Box sx={{ display: 'grid', gap: 2 }}>
-      <Typography variant="h5" sx={{ fontWeight: 800 }}>
+    <Box sx={{ display: 'grid', gap: { xs: 1.5, sm: 2 } }}>
+      <Typography variant="h5" sx={{ fontWeight: 800, fontSize: { xs: '1.125rem', sm: '1.25rem' } }}>
         Instellingen
       </Typography>
 
-      <Paper sx={{ p: 2 }}>
+      <Paper sx={{ p: { xs: 1.5, sm: 2 } }}>
         <Stack spacing={2}>
           <FormControlLabel
             control={<Switch checked={mode === 'dark'} onChange={toggleMode} />}
@@ -229,15 +229,16 @@ export function SettingsPage() {
         </Stack>
       </Paper>
 
-      <Paper sx={{ p: 2 }}>
-        <Stack spacing={2}>
-          <Typography sx={{ fontWeight: 900 }}>Navigatie</Typography>
+      <Paper sx={{ p: { xs: 1.5, sm: 2 } }}>
+        <Stack spacing={{ xs: 1.5, sm: 2 }}>
+          <Typography sx={{ fontWeight: 900, fontSize: { xs: '0.875rem', sm: '1rem' } }}>Navigatie</Typography>
           <TextField
             select
             label="Startpagina na login"
             value={startPage}
             onChange={(e) => setStartPage(e.target.value as StartPage)}
-            sx={{ maxWidth: 360 }}
+            size="small"
+            sx={{ width: { xs: '100%', sm: 'auto' }, maxWidth: { xs: '100%', sm: 360 } }}
             helperText="Waar je standaard landt na inloggen (en bij ‘/’)."
           >
             <MenuItem value="/dashboard">Dashboard</MenuItem>

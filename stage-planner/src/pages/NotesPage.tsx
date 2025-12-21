@@ -254,8 +254,8 @@ export function NotesPage() {
   }
 
   return (
-    <Box sx={{ display: 'grid', gap: 2 }}>
-      <Typography variant="h5" sx={{ fontWeight: 800 }}>
+    <Box sx={{ display: 'grid', gap: { xs: 1.5, sm: 2 } }}>
+      <Typography variant="h5" sx={{ fontWeight: 800, fontSize: { xs: '1.125rem', sm: '1.25rem' } }}>
         Notities / mail
       </Typography>
 
@@ -265,9 +265,9 @@ export function NotesPage() {
         </Alert>
       )}
 
-      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="stretch">
-        <Paper sx={{ width: { xs: '100%', md: 360 }, overflow: 'hidden' }}>
-          <Box sx={{ p: 2 }}>
+      <Stack direction="column" spacing={{ xs: 1.5, sm: 2 }} sx={{ '@media (min-width:900px)': { flexDirection: 'row', alignItems: 'stretch' } }}>
+        <Paper sx={{ width: '100%', overflow: 'hidden', '@media (min-width:900px)': { width: 360 } }}>
+          <Box sx={{ p: { xs: 1.5, sm: 2 } }}>
             <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
               <Typography sx={{ fontWeight: 800 }}>Opgeslagen</Typography>
               <Button startIcon={<NoteAddIcon />} onClick={newNote}>
@@ -300,13 +300,12 @@ export function NotesPage() {
           </List>
         </Paper>
 
-        <Paper sx={{ flex: 1, p: 2 }}>
-          <Stack spacing={2}>
+        <Paper sx={{ flex: 1, p: { xs: 1.5, sm: 2 } }}>
+          <Stack spacing={{ xs: 1.5, sm: 2 }}>
             <Stack
-              direction={{ xs: 'column', sm: 'row' }}
-              spacing={1}
-              alignItems={{ xs: 'stretch', sm: 'center' }}
-              justifyContent="space-between"
+              direction="column"
+              spacing={{ xs: 1, sm: 1.5 }}
+              sx={{ '@media (min-width:600px)': { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' } }}
             >
               <Typography sx={{ fontWeight: 800 }}>
                 {draft.id ? 'Bewerken' : 'Nieuw'}
@@ -419,12 +418,12 @@ export function NotesPage() {
               )}
             </Box>
 
-            <Paper variant="outlined" sx={{ p: 1.5 }}>
+            <Paper variant="outlined" sx={{ p: { xs: 1, sm: 1.5 } }}>
               <Stack spacing={1}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 900 }}>
                   Delen (cloud)
                 </Typography>
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
+                <Stack direction="column" spacing={{ xs: 1.5, sm: 2 }} sx={{ '@media (min-width:600px)': { flexDirection: 'row', alignItems: 'center' } }}>
                   <TextField
                     label="Email collega"
                     value={shareEmail}
@@ -506,7 +505,7 @@ export function NotesPage() {
             />
 
             {selectedFiles.length > 0 && (
-              <Paper variant="outlined" sx={{ p: 1 }}>
+              <Paper variant="outlined" sx={{ p: { xs: 0.75, sm: 1 } }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1 }}>
                   Geselecteerde bijlages
                 </Typography>

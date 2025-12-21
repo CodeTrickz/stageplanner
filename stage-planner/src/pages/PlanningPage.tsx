@@ -248,25 +248,26 @@ export function PlanningPage() {
   }
 
   return (
-    <Box sx={{ display: 'grid', gap: 2 }}>
-      <Typography variant="h5" sx={{ fontWeight: 800 }}>
+    <Box sx={{ display: 'grid', gap: { xs: 1.5, sm: 2 } }}>
+      <Typography variant="h5" sx={{ fontWeight: 800, fontSize: { xs: '1.125rem', sm: '1.25rem' } }}>
         Planning
       </Typography>
 
-      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="stretch">
-        <Box sx={{ width: { xs: '100%', md: 360 }, display: 'grid', gap: 2 }}>
+      <Stack direction="column" spacing={{ xs: 1.5, sm: 2 }} sx={{ '@media (min-width:900px)': { flexDirection: 'row', alignItems: 'stretch' } }}>
+        <Box sx={{ width: '100%', display: 'grid', gap: { xs: 1.5, sm: 2 }, '@media (min-width:900px)': { width: 360 } }}>
           <MonthCalendar value={date} onChange={setDate} />
-          <Paper variant="outlined" sx={{ p: 1.5 }}>
-            <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
+          <Paper variant="outlined" sx={{ p: { xs: 1, sm: 1.5 } }}>
+            <Stack direction="column" spacing={{ xs: 1, sm: 1.5 }} sx={{ '@media (min-width:600px)': { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' } }}>
               <TextField
                 label="Datum"
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
                 InputLabelProps={{ shrink: true }}
-                sx={{ maxWidth: 200 }}
+                size="small"
+                sx={{ width: { xs: '100%', sm: 'auto' }, maxWidth: { xs: '100%', sm: 200 } }}
               />
-              <Button variant="contained" onClick={startNew}>
+              <Button variant="contained" onClick={startNew} size="small" sx={{ alignSelf: { xs: 'stretch', sm: 'auto' } }}>
                 Nieuw item
               </Button>
             </Stack>

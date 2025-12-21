@@ -6,6 +6,19 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-size: 14px;
+}
+
+@media (min-width: 600px) {
+  :root {
+    font-size: 15px;
+  }
+}
+
+@media (min-width: 960px) {
+  :root {
+    font-size: 16px;
+  }
 }
 
 html,
@@ -16,4 +29,5 @@ body,
 
 body {
   margin: 0;
+  padding: 0;
 }

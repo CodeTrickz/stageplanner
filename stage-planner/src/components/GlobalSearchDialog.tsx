@@ -136,20 +136,21 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" fullScreen={fullScreen}>
-      <DialogTitle>
-        <Typography sx={{ fontWeight: 900 }}>Zoek overal</Typography>
+      <DialogTitle sx={{ p: { xs: 1.5, sm: 2 } }}>
+        <Typography sx={{ fontWeight: 900, fontSize: { xs: '1rem', sm: '1.125rem' } }}>Zoek overal</Typography>
       </DialogTitle>
-      <DialogContent dividers>
+      <DialogContent dividers sx={{ p: { xs: 1.5, sm: 2 } }}>
         <TextField
           autoFocus
           fullWidth
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Zoek in planning, notities, bestanden…"
-          InputProps={{ startAdornment: <SearchIcon sx={{ mr: 1 }} /> }}
+          size="small"
+          InputProps={{ startAdornment: <SearchIcon sx={{ mr: { xs: 0.5, sm: 1 }, fontSize: { xs: '1rem', sm: '1.25rem' } }} /> }}
         />
 
-        <Box sx={{ mt: 2 }}>
+        <Box sx={{ mt: { xs: 1.5, sm: 2 } }}>
           {results == null ? (
             <Alert severity="info">Typ om te zoeken…</Alert>
           ) : results.length === 0 ? (

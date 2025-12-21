@@ -56,14 +56,14 @@ export function SharedPage() {
   }, [token])
 
   return (
-    <Box sx={{ display: 'grid', gap: 2 }}>
-      <Typography variant="h5" sx={{ fontWeight: 800 }}>
+    <Box sx={{ display: 'grid', gap: { xs: 1.5, sm: 2 } }}>
+      <Typography variant="h5" sx={{ fontWeight: 800, fontSize: { xs: '1.125rem', sm: '1.25rem' } }}>
         Gedeeld met mij
       </Typography>
       {error && <Alert severity="error">{error}</Alert>}
 
-      <Paper variant="outlined" sx={{ p: 2 }}>
-        <Typography sx={{ fontWeight: 900, mb: 1 }}>Taken</Typography>
+      <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 } }}>
+        <Typography sx={{ fontWeight: 900, mb: 1, fontSize: { xs: '0.875rem', sm: '1rem' } }}>Taken</Typography>
         {planning.length === 0 ? (
           <Alert severity="info">Nog geen gedeelde taken.</Alert>
         ) : (
@@ -80,8 +80,8 @@ export function SharedPage() {
         )}
       </Paper>
 
-      <Paper variant="outlined" sx={{ p: 2 }}>
-        <Typography sx={{ fontWeight: 900, mb: 1 }}>Notities</Typography>
+      <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 } }}>
+        <Typography sx={{ fontWeight: 900, mb: 1, fontSize: { xs: '0.875rem', sm: '1rem' } }}>Notities</Typography>
         {notes.length === 0 ? (
           <Alert severity="info">Nog geen gedeelde notities.</Alert>
         ) : (

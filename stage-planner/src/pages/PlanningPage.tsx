@@ -19,6 +19,8 @@ import {
   Stack,
   TextField,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useMemo, useState } from 'react'
@@ -65,6 +67,8 @@ function toDraft(item: PlanningItem): Draft {
 }
 
 export function PlanningPage() {
+  const theme = useTheme()
+  const fullScreenDialog = useMediaQuery(theme.breakpoints.down('sm'))
   const { user } = useAuth()
   const token = useApiToken()
   const { defaultTaskMinutes, workdayStart, defaultPriority, defaultStatus, timeFormat } = useSettings()
@@ -378,7 +382,7 @@ export function PlanningPage() {
         ))}
       </Box>
 
-      <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm">
+      <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm" fullScreen={fullScreenDialog}>
         <DialogTitle>{draft.id ? 'Planning item bewerken' : 'Nieuw planning item'}</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 2, pt: 2 }}>
           <TextField

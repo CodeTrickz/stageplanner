@@ -1,5 +1,5 @@
 import DownloadIcon from '@mui/icons-material/Download'
-import { Alert, Box, Button, Dialog, DialogContent, DialogTitle, Divider, Stack, Typography } from '@mui/material'
+import { Alert, Box, Button, Dialog, DialogContent, DialogTitle, Divider, Stack, Typography, useMediaQuery, useTheme } from '@mui/material'
 import type { NoteDraft, StoredFile } from '../db/db'
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -24,8 +24,10 @@ export function NotePreviewDialog({
   files: StoredFile[]
   onClose: () => void
 }) {
+  const theme = useTheme()
+  const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" fullScreen={fullScreen}>
       <DialogTitle>
         <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
           <Box sx={{ minWidth: 0 }}>
@@ -95,6 +97,7 @@ export function NotePreviewDialog({
     </Dialog>
   )
 }
+
 
 
 

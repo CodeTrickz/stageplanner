@@ -10,6 +10,8 @@ import {
   ListItemText,
   TextField,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -32,6 +34,8 @@ function stripHtml(html: string) {
 export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const nav = useNavigate()
   const { user } = useAuth()
+  const theme = useTheme()
+  const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
   const userId = (user as any)?.id as string
   const ownerUserId = userId || null
   const [q, setQ] = useState('')
@@ -131,7 +135,7 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
   }
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" fullScreen={fullScreen}>
       <DialogTitle>
         <Typography sx={{ fontWeight: 900 }}>Zoek overal</Typography>
       </DialogTitle>

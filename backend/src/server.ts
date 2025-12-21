@@ -949,12 +949,12 @@ app.get('/admin/audit', requireAuth, requireAdmin, (req, res) => {
   const q = parseQuery(
     req,
     z.object({
-      limit: z.coerce.number().optional().default(10),
-      offset: z.coerce.number().optional().default(0),
+      limit: z.coerce.number().default(10),
+      offset: z.coerce.number().default(0),
     }),
   )
-  const safeLimit = Math.min(500, Math.max(1, Math.floor(q.limit)))
-  const safeOffset = Math.max(0, Math.floor(q.offset))
+  const safeLimit = Math.min(500, Math.max(1, Math.floor(q.limit ?? 10)))
+  const safeOffset = Math.max(0, Math.floor(q.offset ?? 0))
   const logs = db.listAuditWithActorPaged(safeLimit, safeOffset)
   const total = db.countAudit()
   return res.json({ logs, total, limit: safeLimit, offset: safeOffset })
@@ -1035,12 +1035,12 @@ app.get('/admin/errors', requireAuth, requireAdmin, (req, res) => {
   const q = parseQuery(
     req,
     z.object({
-      limit: z.coerce.number().optional().default(10),
-      offset: z.coerce.number().optional().default(0),
+      limit: z.coerce.number().default(10),
+      offset: z.coerce.number().default(0),
     }),
   )
-  const safeLimit = Math.min(2000, Math.max(1, Math.floor(q.limit)))
-  const safeOffset = Math.max(0, Math.floor(q.offset))
+  const safeLimit = Math.min(2000, Math.max(1, Math.floor(q.limit ?? 10)))
+  const safeOffset = Math.max(0, Math.floor(q.offset ?? 0))
 
   if (!fs.existsSync(ERROR_LOG_PATH)) return res.json({ errors: [], total: 0, limit: safeLimit, offset: safeOffset })
   const raw = fs.readFileSync(ERROR_LOG_PATH, 'utf-8')

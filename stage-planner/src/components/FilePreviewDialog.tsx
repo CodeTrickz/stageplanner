@@ -1,6 +1,6 @@
 import DownloadIcon from '@mui/icons-material/Download'
 import PsychologyIcon from '@mui/icons-material/Psychology'
-import { Alert, Box, Button, Dialog, DialogContent, DialogTitle, Stack, Typography } from '@mui/material'
+import { Alert, Box, Button, Dialog, DialogContent, DialogTitle, Stack, Typography, useMediaQuery, useTheme } from '@mui/material'
 import mammoth from 'mammoth'
 import { useEffect, useMemo, useState } from 'react'
 import * as XLSX from 'xlsx'
@@ -36,6 +36,8 @@ export function FilePreviewDialog({
   onClose: () => void
 }) {
   const { autoExtractTextOnOpen, ocrLanguage } = useSettings()
+  const theme = useTheme()
+  const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
   const url = useObjectUrl(file?.data ?? null)
   const cat = useMemo(() => (file ? fileCategory(file) : 'other'), [file])
   const [text, setText] = useState<string | null>(null)
@@ -165,7 +167,7 @@ export function FilePreviewDialog({
   }, [open, autoExtractTextOnOpen, file?.id, cat, ocrLanguage])
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" fullScreen={fullScreen}>
       <DialogTitle>
         <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
           <Box sx={{ minWidth: 0 }}>

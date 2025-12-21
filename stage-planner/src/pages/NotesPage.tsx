@@ -310,7 +310,12 @@ export function NotesPage() {
               <Typography sx={{ fontWeight: 800 }}>
                 {draft.id ? 'Bewerken' : 'Nieuw'}
               </Typography>
-              <Stack direction="row" spacing={1} justifyContent="flex-end">
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={1}
+                justifyContent="flex-end"
+                alignItems={{ xs: 'stretch', sm: 'center' }}
+              >
                 <Button
                   variant="outlined"
                   startIcon={<PreviewIcon />}

@@ -15,6 +15,8 @@ import {
   Stack,
   TextField,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material'
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../auth/auth'
@@ -37,6 +39,8 @@ type AdminUser = {
 }
 
 export function AdminPage() {
+  const theme = useTheme()
+  const fullScreenDialog = useMediaQuery(theme.breakpoints.down('sm'))
   const { token, user } = useAuth()
   const [users, setUsers] = useState<AdminUser[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -568,7 +572,7 @@ export function AdminPage() {
         {!users && <Alert severity="info">Laden…</Alert>}
       </Box>
 
-      <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm">
+      <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm" fullScreen={fullScreenDialog}>
         <DialogTitle>User bewerken</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 2, pt: 2 }}>
           <TextField
@@ -630,7 +634,7 @@ export function AdminPage() {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={createOpen} onClose={() => setCreateOpen(false)} fullWidth maxWidth="sm">
+      <Dialog open={createOpen} onClose={() => setCreateOpen(false)} fullWidth maxWidth="sm" fullScreen={fullScreenDialog}>
         <DialogTitle>Nieuwe gebruiker</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 2, pt: 2 }}>
           <TextField

@@ -349,7 +349,7 @@ export function FilesPage() {
                 variant="outlined"
                 sx={{ p: 1.5, display: 'grid', gap: 1 }}
               >
-                <Stack direction="row" spacing={2} alignItems="center">
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'stretch', sm: 'center' }}>
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography sx={{ fontWeight: 800 }} noWrap>
                       {g.latest.name}
@@ -368,38 +368,46 @@ export function FilesPage() {
                     </Stack>
                   </Box>
 
-                  <IconButton
-                    aria-label="Meta bewerken"
-                    onClick={() => {
-                      setEditing(g.groupKey)
-                      setEditFolder(g.meta?.folder || '')
-                      setEditLabels((g.labels || []).join(', '))
-                      setExpanded((e) => ({ ...e, [g.groupKey]: true }))
-                    }}
+                  <Stack
+                    direction="row"
+                    spacing={0.5}
+                    alignItems="center"
+                    justifyContent="flex-end"
+                    sx={{ width: { xs: '100%', sm: 'auto' }, flexWrap: 'wrap' }}
                   >
-                    <EditOutlinedIcon />
-                  </IconButton>
-                  <IconButton aria-label="Preview" onClick={() => setPreview(g.latest)}>
-                    <PreviewIcon />
-                  </IconButton>
-                  <IconButton
-                    aria-label="Download"
-                    onClick={() => {
-                      void auditFiles('download', [g.latest])
-                      downloadBlob(g.latest.data, g.latest.name)
-                    }}
-                  >
-                    <DownloadIcon />
-                  </IconButton>
-                  <IconButton aria-label="Verwijder" onClick={() => g.latest.id && remove(g.latest.id)}>
-                    <DeleteOutlineIcon />
-                  </IconButton>
-                  <IconButton
-                    aria-label="Versies tonen"
-                    onClick={() => setExpanded((e) => ({ ...e, [g.groupKey]: !e[g.groupKey] }))}
-                  >
-                    <ExpandMoreIcon />
-                  </IconButton>
+                    <IconButton
+                      aria-label="Meta bewerken"
+                      onClick={() => {
+                        setEditing(g.groupKey)
+                        setEditFolder(g.meta?.folder || '')
+                        setEditLabels((g.labels || []).join(', '))
+                        setExpanded((e) => ({ ...e, [g.groupKey]: true }))
+                      }}
+                    >
+                      <EditOutlinedIcon />
+                    </IconButton>
+                    <IconButton aria-label="Preview" onClick={() => setPreview(g.latest)}>
+                      <PreviewIcon />
+                    </IconButton>
+                    <IconButton
+                      aria-label="Download"
+                      onClick={() => {
+                        void auditFiles('download', [g.latest])
+                        downloadBlob(g.latest.data, g.latest.name)
+                      }}
+                    >
+                      <DownloadIcon />
+                    </IconButton>
+                    <IconButton aria-label="Verwijder" onClick={() => g.latest.id && remove(g.latest.id)}>
+                      <DeleteOutlineIcon />
+                    </IconButton>
+                    <IconButton
+                      aria-label="Versies tonen"
+                      onClick={() => setExpanded((e) => ({ ...e, [g.groupKey]: !e[g.groupKey] }))}
+                    >
+                      <ExpandMoreIcon />
+                    </IconButton>
+                  </Stack>
                 </Stack>
 
                 <Collapse in={!!expanded[g.groupKey]} timeout="auto" unmountOnExit>

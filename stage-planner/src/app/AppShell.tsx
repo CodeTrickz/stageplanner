@@ -6,17 +6,26 @@ import ListAltIcon from '@mui/icons-material/ListAlt'
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings'
 import SettingsIcon from '@mui/icons-material/Settings'
 import SearchIcon from '@mui/icons-material/Search'
+import MenuIcon from '@mui/icons-material/Menu'
 import {
   AppBar,
   Box,
   Button,
   Chip,
   Container,
+  Divider,
+  Drawer,
   IconButton,
+  List,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
   Tab,
   Tabs,
   Toolbar,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material'
 import React from 'react'
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom'
@@ -48,6 +57,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const value = tabValueFromPath(pathname)
   const nav = useNavigate()
   const { user, logout } = useAuth()
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'))
+  const [drawerOpen, setDrawerOpen] = React.useState(false)
   const online = useOnlineStatus()
   const backendOk = useBackendHealth(!!user && online)
   const [api, setApi] = React.useState<{ inFlight: number; lastSuccessAt: number | null; lastErrorAt: number | null }>({
@@ -71,24 +83,33 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [searchOpen, setSearchOpen] = React.useState(false)
 
   const isAdmin = !!(user as any)?.isAdmin
+  const visibleTabs = tabs.filter((t) => (!(t as any).adminOnly || isAdmin))
 
   return (
     <Box sx={{ minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
       <AppBar position="sticky" elevation={0} color="inherit">
-        <Toolbar sx={{ gap: 2 }}>
+        <Toolbar sx={{ gap: 1.5 }}>
+          {user && isMobile && (
+            <IconButton
+              edge="start"
+              aria-label="Menu"
+              onClick={() => setDrawerOpen(true)}
+              sx={{ mr: 0.5 }}
+            >
+              <MenuIcon />
+            </IconButton>
+          )}
           <Typography variant="h6" sx={{ fontWeight: 800 }}>
             Stage Planner
           </Typography>
-          {user && (
+          {user && !isMobile && (
             <Tabs
               value={value}
               textColor="primary"
               indicatorColor="primary"
               sx={{ ml: 1 }}
             >
-              {tabs
-                .filter((t) => (!(t as any).adminOnly || isAdmin))
-                .map((t) => (
+              {visibleTabs.map((t) => (
                   <Tab
                     key={t.to}
                     value={t.to}
@@ -99,11 +120,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     to={t.to}
                     sx={{ minHeight: 48 }}
                   />
-                ))}
+              ))}
             </Tabs>
           )}
           <Box sx={{ flex: 1 }} />
-          {statusChip}
+          <Box sx={{ display: { xs: 'none', sm: 'block' } }}>{statusChip}</Box>
           {user && (
             <IconButton aria-label="Zoek" onClick={() => setSearchOpen(true)}>
               <SearchIcon />
@@ -112,6 +133,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {user ? (
             <Button
               variant="outlined"
+              sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
               onClick={() => {
                 logout()
                 nav('/login')
@@ -127,7 +149,62 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </Toolbar>
       </AppBar>
 
-      <Container sx={{ py: 3, flex: 1 }}>{children}</Container>
+      <Drawer
+        anchor="left"
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        PaperProps={{ sx: { width: 320, maxWidth: '85vw' } }}
+      >
+        <Box sx={{ p: 2 }}>
+          <Typography variant="h6" sx={{ fontWeight: 900 }}>
+            Stage Planner
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+            {user ? `Ingelogd als ${user.email}` : 'Niet ingelogd'}
+          </Typography>
+          <Box sx={{ mt: 1 }}>{statusChip}</Box>
+        </Box>
+        <Divider />
+        <List disablePadding>
+          {visibleTabs.map((t) => (
+            <ListItemButton
+              key={t.to}
+              selected={value === t.to}
+              onClick={() => {
+                setDrawerOpen(false)
+                nav(t.to)
+              }}
+            >
+              <ListItemIcon sx={{ minWidth: 40 }}>{t.icon}</ListItemIcon>
+              <ListItemText primary={t.label} />
+            </ListItemButton>
+          ))}
+        </List>
+        <Divider />
+        {user ? (
+          <Box sx={{ p: 2 }}>
+            <Button
+              fullWidth
+              variant="outlined"
+              onClick={() => {
+                setDrawerOpen(false)
+                logout()
+                nav('/login')
+              }}
+            >
+              Logout
+            </Button>
+          </Box>
+        ) : (
+          <Box sx={{ p: 2 }}>
+            <Button fullWidth variant="contained" onClick={() => nav('/login')}>
+              Login
+            </Button>
+          </Box>
+        )}
+      </Drawer>
+
+      <Container sx={{ py: { xs: 2, sm: 3 }, flex: 1, px: { xs: 1.5, sm: 2 } }}>{children}</Container>
       <GlobalSearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} />
     </Box>
   )

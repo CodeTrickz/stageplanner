@@ -16,20 +16,22 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: |
-            backend/package-lock.json
-            stage-planner/package-lock.json
 
-      - name: Install system deps (canvas)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libcairo2-dev \
-            libpango1.0-dev \
-            libjpeg-dev \
-            libgif-dev \
-            librsvg2-dev
+      - name: Cache backend dependencies
+        uses: actions/cache@v4
+        with:
+          path: backend/node_modules
+          key: ${{ runner.os }}-backend-${{ hashFiles('backend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-backend-
+
+      - name: Cache frontend dependencies
+        uses: actions/cache@v4
+        with:
+          path: stage-planner/node_modules
+          key: ${{ runner.os }}-frontend-${{ hashFiles('stage-planner/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-frontend-
 
       - name: Backend - install
         working-directory: backend
@@ -37,7 +39,7 @@ jobs:
 
       - name: Backend - build
         working-directory: backend
-        run: npm run build --if-present
+        run: npm run build
 
       - name: Frontend - install
         working-directory: stage-planner

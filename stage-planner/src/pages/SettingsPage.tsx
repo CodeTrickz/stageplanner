@@ -1,7 +1,7 @@
 import { Alert, Box, Button, FormControlLabel, MenuItem, Paper, Stack, Switch, TextField, Typography } from '@mui/material'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { apiFetch } from '../api/client'
-import { useSettings } from '../app/settings'
+import { useSettings, type StartPage } from '../app/settings'
 import { useAuth } from '../auth/auth'
 
 export function SettingsPage() {
@@ -236,7 +236,7 @@ export function SettingsPage() {
             select
             label="Startpagina na login"
             value={startPage}
-            onChange={(e) => setStartPage(e.target.value)}
+            onChange={(e) => setStartPage(e.target.value as StartPage)}
             sx={{ maxWidth: 360 }}
             helperText="Waar je standaard landt na inloggen (en bij ‘/’)."
           >
@@ -277,7 +277,7 @@ export function SettingsPage() {
             select
             label="Weekweergave"
             value={weekViewMode}
-            onChange={(e) => setWeekViewMode(e.target.value as any)}
+            onChange={(e) => setWeekViewMode(e.target.value as 'full' | 'workweek')}
             sx={{ maxWidth: 280 }}
             helperText="‘Werkweek’ toont altijd maandag t/m vrijdag."
           >
@@ -438,7 +438,7 @@ export function SettingsPage() {
               </Stack>
               <TextField
                 label="Groep"
-                value={user?.activeGroupName || user?.activeGroupId || ''}
+                value={''}
                 disabled
                 helperText="Je actieve groep bepaalt welke cloud data je ziet. Je persoonlijke groep = je eigen planner."
               />

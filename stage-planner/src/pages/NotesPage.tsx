@@ -49,6 +49,7 @@ function safeFilename(name: string, fallback: string) {
   const trimmed = name.trim()
   if (!trimmed) return fallback
   return trimmed
+    // eslint-disable-next-line no-control-regex
     .replace(/[<>:"/\\|?*\u0000-\u001F]/g, '_')
     .replace(/\s+/g, ' ')
     .slice(0, 80)
@@ -103,7 +104,7 @@ export function NotesPage() {
     if (!ownerUserId) return []
     const list = await db.links
       .where('[ownerUserId+fromId]')
-      .equals([ownerUserId, draft.id] as any)
+      .equals([ownerUserId, draft.id])
       .and((l) => l.fromType === 'note')
       .toArray()
     return list
@@ -459,7 +460,7 @@ export function NotesPage() {
                 // remove old planning links
                 const existing = await db.links
                   .where('[ownerUserId+fromId]')
-                  .equals([ownerUserId, draft.id])
+                  .equals([ownerUserId, draft.id] as [string, number])
                   .and((l) => l.fromType === 'note' && l.toType === 'planning')
                   .toArray()
                 await db.links.bulkDelete(existing.map((x) => x.id!).filter(Boolean))

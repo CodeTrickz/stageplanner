@@ -375,15 +375,25 @@ export function AdminPage() {
         {audit && audit.length === 0 && <Alert severity="info">Geen logs.</Alert>}
         {audit && audit.length > 0 && (
           <Stack spacing={1}>
-            {audit.map((l) => (
-              <Paper key={l.id} variant="outlined" sx={{ p: 1.25 }}>
-                <Typography sx={{ fontWeight: 800 }}>
-                  {new Date(l.createdAt).toLocaleString()} •{' '}
-                  {l.actorEmail || l.actorUsername || l.actorUserId || 'onbekend'} • {l.action} •{' '}
-                  {l.resourceType}:{l.resourceId}
-                </Typography>
-              </Paper>
-            ))}
+            {audit.map((l, idx) => {
+              const id = typeof l.id === 'string' ? l.id : typeof l.id === 'number' ? String(l.id) : String(idx)
+              const createdAt = typeof l.createdAt === 'number' ? l.createdAt : typeof l.createdAt === 'string' ? Number(l.createdAt) : Date.now()
+              const actorEmail = typeof l.actorEmail === 'string' ? l.actorEmail : undefined
+              const actorUsername = typeof l.actorUsername === 'string' ? l.actorUsername : undefined
+              const actorUserId = typeof l.actorUserId === 'string' ? l.actorUserId : undefined
+              const action = typeof l.action === 'string' ? l.action : 'unknown'
+              const resourceType = typeof l.resourceType === 'string' ? l.resourceType : 'unknown'
+              const resourceId = typeof l.resourceId === 'string' ? l.resourceId : String(l.resourceId ?? '')
+              return (
+                <Paper key={id} variant="outlined" sx={{ p: 1.25 }}>
+                  <Typography sx={{ fontWeight: 800 }}>
+                    {new Date(createdAt).toLocaleString()} •{' '}
+                    {actorEmail || actorUsername || actorUserId || 'onbekend'} • {action} •{' '}
+                    {resourceType}:{resourceId}
+                  </Typography>
+                </Paper>
+              )
+            })}
           </Stack>
         )}
       </Paper>
@@ -422,30 +432,35 @@ export function AdminPage() {
         {frontendErrors && frontendErrors.length > 0 && (
           <Stack spacing={1}>
             {frontendErrors.slice(0, 30).map((e) => {
-              const open = frontendOpenId === e.id
+              const eId = typeof e.id === 'number' ? e.id : 0
+              const createdAt = typeof e.createdAt === 'number' ? e.createdAt : typeof e.createdAt === 'string' ? Number(e.createdAt) : Date.now()
+              const level = typeof e.level === 'string' ? e.level : 'error'
+              const source = typeof e.source === 'string' ? e.source : 'unknown'
+              const message = typeof e.message === 'string' ? e.message : String(e.message ?? '')
+              const open = frontendOpenId === eId
               return (
                 <Paper
-                  key={e.id}
+                  key={eId}
                   variant="outlined"
                   sx={{ p: 1.25, cursor: 'pointer' }}
-                  onClick={() => setFrontendOpenId((cur) => (cur === e.id ? null : e.id))}
+                  onClick={() => setFrontendOpenId((cur) => (cur === eId ? null : eId))}
                 >
                   <Typography sx={{ fontWeight: 800 }}>
-                    {new Date(e.createdAt).toLocaleString()} • {e.level} • {e.source} • {e.message}
+                    {new Date(createdAt).toLocaleString()} • {level} • {source} • {message}
                   </Typography>
                   {open && (
                     <Box sx={{ mt: 1 }}>
-                      {e.stack && (
+                      {typeof e.stack === 'string' && e.stack && (
                         <Paper variant="outlined" sx={{ p: 1, bgcolor: 'background.default' }}>
                           <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>
-                            {String(e.stack).slice(0, 3000)}
+                            {e.stack.slice(0, 3000)}
                           </Typography>
                         </Paper>
                       )}
-                      {e.metaJson && e.metaJson !== '{}' && (
+                      {typeof e.metaJson === 'string' && e.metaJson && e.metaJson !== '{}' && (
                         <Paper variant="outlined" sx={{ p: 1, mt: 1, bgcolor: 'background.default' }}>
                           <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>
-                            {String(e.metaJson).slice(0, 3000)}
+                            {e.metaJson.slice(0, 3000)}
                           </Typography>
                         </Paper>
                       )}
@@ -493,8 +508,11 @@ export function AdminPage() {
           <Stack spacing={1}>
             {backendErrors.slice(0, 20).map((e, idx: number) => {
               const open = backendOpenIdx === idx
-              const when = new Date(e.ts || Date.now()).toLocaleString()
-              const headline = `${when} • ${e.type || 'error'} • ${e.message || ''}`.trim()
+              const ts = typeof e.ts === 'number' ? e.ts : typeof e.ts === 'string' ? Number(e.ts) : Date.now()
+              const type = typeof e.type === 'string' ? e.type : 'error'
+              const message = typeof e.message === 'string' ? e.message : ''
+              const when = new Date(ts).toLocaleString()
+              const headline = `${when} • ${type} • ${message}`.trim()
               return (
                 <Paper
                   key={idx}
@@ -505,10 +523,10 @@ export function AdminPage() {
                   <Typography sx={{ fontWeight: 800 }}>{headline}</Typography>
                   {open && (
                     <Box sx={{ mt: 1 }}>
-                      {e.stack && (
+                      {typeof e.stack === 'string' && e.stack && (
                         <Paper variant="outlined" sx={{ p: 1, bgcolor: 'background.default' }}>
                           <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>
-                            {String(e.stack).slice(0, 3000)}
+                            {e.stack.slice(0, 3000)}
                           </Typography>
                         </Paper>
                       )}

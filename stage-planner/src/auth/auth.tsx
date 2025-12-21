@@ -51,7 +51,10 @@ function enrichUserFromToken(token: string, user: User): User {
 async function claimLegacyLocalPlanning(userId: string) {
   try {
     // Claim any legacy items (ownerUserId is null) for current user.
-    await db.planning.where('ownerUserId').equals(null).modify({ ownerUserId: userId })
+    const legacy = await db.planning.filter((item) => item.ownerUserId === null).toArray()
+    if (legacy.length > 0) {
+      await Promise.all(legacy.map((item) => item.id && db.planning.update(item.id, { ownerUserId: userId })))
+    }
   } catch {
     // ignore
   }

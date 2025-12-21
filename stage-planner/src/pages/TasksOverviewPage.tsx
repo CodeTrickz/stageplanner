@@ -26,6 +26,7 @@ export function TasksOverviewPage() {
   const [status, setStatus] = useState<'all' | PlanningItem['status']>('all')
 
   const items = useLiveQuery(async () => {
+    if (!userId) return []
     const list = await db.planning.where('ownerUserId').equals(userId).toArray()
     // date asc, time asc
     return list.sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start))

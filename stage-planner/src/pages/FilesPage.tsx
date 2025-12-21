@@ -81,7 +81,7 @@ export function FilesPage() {
 
   const metas = useLiveQuery(async () => {
     if (!ownerUserId) return []
-    const list = await db.fileMeta.where('ownerUserId').equals(ownerUserId as any).toArray()
+    const list = await db.fileMeta.where('ownerUserId').equals(ownerUserId).toArray()
     return list
   }, [ownerUserId])
 
@@ -320,7 +320,7 @@ export function FilesPage() {
             select
             label="Sorteren"
             value={sort}
-            onChange={(e) => setSort(e.target.value)}
+            onChange={(e) => setSort(e.target.value as 'recent' | 'name')}
             sx={{ minWidth: 180 }}
           >
             <MenuItem value="recent">Recent</MenuItem>

@@ -85,6 +85,7 @@ export function DashboardPage() {
   const { user } = useAuth()
   const userId = user?.id
   const items = useLiveQuery(async () => {
+    if (!userId) return []
     const list = await db.planning.where('ownerUserId').equals(userId).toArray()
     return list.sort(byDateTime)
   }, [userId])

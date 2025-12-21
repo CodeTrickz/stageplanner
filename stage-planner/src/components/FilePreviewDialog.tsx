@@ -2,7 +2,7 @@ import DownloadIcon from '@mui/icons-material/Download'
 import PsychologyIcon from '@mui/icons-material/Psychology'
 import { Alert, Box, Button, Dialog, DialogContent, DialogTitle, Stack, Typography, useMediaQuery, useTheme } from '@mui/material'
 import mammoth from 'mammoth'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import * as XLSX from 'xlsx'
 import type { StoredFile } from '../db/db'
 import { useObjectUrl } from '../hooks/useObjectUrl'
@@ -102,9 +102,9 @@ export function FilePreviewDialog({
     return () => {
       cancelled = true
     }
-  }, [file?.id])
+  }, [file?.id, file?.ownerUserId])
 
-  async function runOcr() {
+  const runOcr = useCallback(async () => {
     if (!file?.id) return
     setOcrStatus('loading')
     setOcrText(null)
@@ -118,15 +118,16 @@ export function FilePreviewDialog({
         // Extract embedded text (fast). For scanned PDFs OCR is more work; this covers most PDFs.
         const buf = await file.data.arrayBuffer()
         // configure worker src for pdfjs
-        // @ts-expect-error - pdfjs types are incomplete
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js`
-        // @ts-expect-error - pdfjs types are incomplete
-        const doc = await pdfjsLib.getDocument({ data: buf }).promise
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ;(pdfjsLib as any).GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js`
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const doc = await (pdfjsLib as any).getDocument({ data: buf }).promise
         let out = ''
         for (let i = 1; i <= doc.numPages; i++) {
           const page = await doc.getPage(i)
           const content = await page.getTextContent()
-          const strings = content.items.map((it: { str?: string }) => it.str).filter(Boolean) as string[]
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const strings = (content.items as any[]).map((it: { str?: string }) => it.str).filter(Boolean) as string[]
           out += strings.join(' ') + '\n'
         }
         extracted = out.trim()
@@ -143,7 +144,7 @@ export function FilePreviewDialog({
       setOcrStatus('error')
       setOcrText(e instanceof Error ? e.message : 'ocr_failed')
     }
-  }
+  }, [file, cat, ocrLanguage])
 
   // Auto run OCR/extract on open (only if not cached yet)
   useEffect(() => {
@@ -163,7 +164,7 @@ export function FilePreviewDialog({
     return () => {
       cancelled = true
     }
-  }, [open, autoExtractTextOnOpen, file, cat, ocrLanguage])
+  }, [open, autoExtractTextOnOpen, file, cat, ocrLanguage, ocrStatus, runOcr])
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" fullScreen={fullScreen}>

@@ -89,6 +89,7 @@ export function PlanningPage() {
 
   const items = useLiveQuery(
     async () => {
+      if (!userId) return []
       const list = await db.planning.where('[ownerUserId+date]').equals([userId, date]).sortBy('start')
       return list
     },
@@ -132,7 +133,7 @@ export function PlanningPage() {
     if (!draft.id) return { noteId: '', fileKeys: [] as string[] }
     const links = await db.links
       .where('[ownerUserId+fromId]')
-      .equals([ownerUserId, draft.id])
+      .equals([ownerUserId, draft.id] as [string, number])
       .and((l) => l.fromType === 'planning')
       .toArray()
     const note = links.find((l) => l.toType === 'note')?.toKey ?? ''
@@ -420,7 +421,7 @@ export function PlanningPage() {
               const val = e.target.value as string
               const existing = await db.links
                 .where('[ownerUserId+fromId]')
-                .equals([ownerUserId, draft.id])
+                .equals([ownerUserId, draft.id] as [string, number])
                 .and((l) => l.fromType === 'planning' && l.toType === 'note')
                 .toArray()
               await db.links.bulkDelete(existing.map((x) => x.id!).filter(Boolean))
@@ -454,7 +455,7 @@ export function PlanningPage() {
               if (!draft.id) return
               const existing = await db.links
                 .where('[ownerUserId+fromId]')
-                .equals([ownerUserId, draft.id])
+                .equals([ownerUserId, draft.id] as [string, number])
                 .and((l) => l.fromType === 'planning' && l.toType === 'fileGroup')
                 .toArray()
               await db.links.bulkDelete(existing.map((x) => x.id!).filter(Boolean))

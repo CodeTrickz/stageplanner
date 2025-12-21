@@ -1,0 +1,24 @@
+# Dit bestand definieert wie automatisch wordt gevraagd voor review van wijzigingen
+# Zie: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Globale owners voor het hele project
+* @CodeTrickz
+
+# Backend specifiek
+/backend/ @CodeTrickz
+
+# Frontend specifiek
+/stage-planner/ @CodeTrickz
+
+# GitHub workflows
+/.github/ @CodeTrickz
+
+# Docker configuratie
+/docker-compose.yml @CodeTrickz
+/*.dockerfile @CodeTrickz
+/Dockerfile @CodeTrickz
+
+# Documentatie
+/*.md @CodeTrickz
+/docs/ @CodeTrickz
+

@@ -1,0 +1,59 @@
+version: 2
+updates:
+  # Backend dependencies
+  - package-ecosystem: "npm"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "CodeTrickz"
+    labels:
+      - "dependencies"
+      - "backend"
+    commit-message:
+      prefix: "chore(backend)"
+      include: "scope"
+
+  # Frontend dependencies
+  - package-ecosystem: "npm"
+    directory: "/stage-planner"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "CodeTrickz"
+    labels:
+      - "dependencies"
+      - "frontend"
+    commit-message:
+      prefix: "chore(frontend)"
+      include: "scope"
+
+  # Docker dependencies
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    reviewers:
+      - "CodeTrickz"
+    labels:
+      - "dependencies"
+      - "docker"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    reviewers:
+      - "CodeTrickz"
+    labels:
+      - "dependencies"
+      - "github-actions"
+

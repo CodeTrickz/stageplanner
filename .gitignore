@@ -11,20 +11,64 @@
 **/dist-ssr/
 **/coverage/
 **/*.log
+**/.pnp
+**/.pnp.js
+**/.yarn/cache
+**/.yarn/unplugged
+**/.yarn/build-state.yml
+**/.yarn/install-state.gz
+**/.yarn/berry/cache
 
 # --- Databases / data ---
 **/*.sqlite
+**/*.sqlite-shm
+**/*.sqlite-wal
 **/*.sqlite3
 **/*.db
+**/data/*.ndjson
+**/data/*.log
+!**/data/.gitkeep
+
+# --- Build outputs ---
+**/build/
+**/out/
+**/.next/
+**/.turbo/
+
+# --- Testing ---
+**/.nyc_output/
+**/coverage/
+**/.jest/
 
 # --- OS / editor ---
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+*.swp
+*.swo
+*~
 .vscode/*
 !.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
 .idea/
+*.iml
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+
+# --- Docker ---
+.dockerignore
+
+# --- Misc ---
+*.local
+.cache/
+.temp/
+.tmp/

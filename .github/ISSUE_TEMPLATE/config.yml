@@ -1,0 +1,9 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Discussion
+    url: https://github.com/OWNER/REPO/discussions
+    about: Vraag vragen en deel ideeën met de community
+  - name: 📚 Documentation
+    url: https://github.com/OWNER/REPO/wiki
+    about: Bekijk de documentatie en wiki
+

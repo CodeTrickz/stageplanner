@@ -36,6 +36,15 @@ function parseQuery<T>(req: express.Request, schema: z.ZodType<T>): T {
   return parsed.data
 }
 
+// Wrapper voor async route handlers om errors correct door te geven aan error handler
+function asyncHandler(
+  fn: (req: express.Request, res: express.Response, next: express.NextFunction) => Promise<any>
+): express.RequestHandler {
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    Promise.resolve(fn(req, res, next)).catch(next)
+  }
+}
+
 type RateLimitOptions = {
   name: string
   windowMs: number
@@ -114,18 +123,6 @@ function buildVerifyUrls(rawToken: string) {
 
 // Load env from backend/env.local if it exists (no dotfile needed)
 dotenv.config({ path: path.resolve(__dirname, '..', 'env.local') })
-
-// Validate required environment variables
-const requiredEnvVars = ['JWT_SECRET']
-const missingVars: string[] = []
-for (const varName of requiredEnvVars) {
-  if (!process.env[varName]) {
-    missingVars.push(varName)
-  }
-}
-if (missingVars.length > 0) {
-  throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`)
-}
 
 const app = express()
 // If behind reverse proxy (nginx), set TRUST_PROXY=1 (or a number) so req.ip is correct.
@@ -320,7 +317,7 @@ const registerSchema = z
   .refine((d) => d.password === d.passwordConfirm, { message: 'password_mismatch' })
   .refine((d) => isStrongPassword(d.password), { message: 'weak_password' })
 
-app.post('/auth/register', rlAuthIp, async (req, res) => {
+app.post('/auth/register', rlAuthIp, asyncHandler(async (req, res) => {
   const { email, username, firstName, lastName, password } = parseBody(req, registerSchema)
   const existing = db.findUserByEmail(email)
   if (existing) return res.status(409).json({ error: 'email_in_use' })
@@ -352,7 +349,7 @@ app.post('/auth/register', rlAuthIp, async (req, res) => {
   })
 
   return res.json({ ok: true, message: 'verification_required' })
-})
+}))
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -382,7 +379,7 @@ function issueRefreshToken(userId: string, req: express.Request) {
   return { raw, expiresAt }
 }
 
-app.post('/auth/login', rlAuthIp, rlLoginIdentity, async (req, res) => {
+app.post('/auth/login', rlAuthIp, rlLoginIdentity, asyncHandler(async (req, res) => {
   const { email, password } = parseBody(req, loginSchema)
   const user = db.findUserByEmail(email)
   if (!user) return res.status(401).json({ error: 'invalid_credentials' })
@@ -406,7 +403,7 @@ app.post('/auth/login', rlAuthIp, rlLoginIdentity, async (req, res) => {
       isAdmin: !!user.isAdmin,
     },
   })
-})
+}))
 
 const refreshSchema = z.object({
   refreshToken: z.string().min(20).max(2000),
@@ -514,7 +511,7 @@ const mePasswordSchema = z
   .refine((d) => isStrongPassword(d.newPassword), { message: 'weak_password' })
   .refine((d) => d.newPassword !== d.currentPassword, { message: 'password_reuse' })
 
-app.post('/me/password', requireAuth, rlPasswordChange, async (req, res) => {
+app.post('/me/password', requireAuth, rlPasswordChange, asyncHandler(async (req, res) => {
   const u = getDbUserOr401(req, res)
   if (!u) return
   const { currentPassword, newPassword } = parseBody(req, mePasswordSchema)
@@ -526,7 +523,7 @@ app.post('/me/password', requireAuth, rlPasswordChange, async (req, res) => {
   db.setUserPassword(u.id, hash)
   audit(req, 'account.password_change', 'user', u.id)
   return res.json({ ok: true })
-})
+}))
 
 // Client-side settings changes: log to audit
 const clientSettingsAuditSchema = z.object({
@@ -582,13 +579,13 @@ app.post('/audit/files', requireAuth, (req, res) => {
 
 
 const verifyBodySchema = z.object({ token: z.string().min(10).max(5000) })
-app.post('/auth/verify', rlVerifyIp, async (req, res) => {
+app.post('/auth/verify', rlVerifyIp, asyncHandler(async (req, res) => {
   const { token } = parseBody(req, verifyBodySchema)
   const tokenHash = sha256Hex(token)
   const user = db.verifyEmailByTokenHash(tokenHash)
   if (!user) return res.status(400).json({ error: 'invalid_or_expired_token' })
   return res.json({ ok: true })
-})
+}))
 
 // GET variant (makkelijker vanuit browser; geen JSON body nodig)
 const verifyQuerySchema = z.object({ token: z.string().min(10).max(5000) })
@@ -602,7 +599,7 @@ app.get('/auth/verify', rlVerifyIp, (req, res) => {
 
 // Vraag een nieuwe verificatie-link aan (alleen als account nog niet verified is)
 const resendSchema = z.object({ email: z.string().email() })
-app.post('/auth/resend-verify', rlAuthIp, rlVerifyIp, async (req, res) => {
+app.post('/auth/resend-verify', rlAuthIp, rlVerifyIp, asyncHandler(async (req, res) => {
   const { email } = parseBody(req, resendSchema)
 
   const user = db.findUserByEmail(email)
@@ -624,9 +621,9 @@ app.post('/auth/resend-verify', rlAuthIp, rlVerifyIp, async (req, res) => {
   })
 
   return res.json({ ok: true, ...(isProd ? {} : { sent: true }) })
-})
+}))
 
-app.post('/auth/resend-verification', rlAuthIp, rlVerifyIp, async (req, res) => {
+app.post('/auth/resend-verification', rlAuthIp, rlVerifyIp, asyncHandler(async (req, res) => {
   const { email } = parseBody(req, resendSchema)
 
   const user = db.findUserByEmail(email)
@@ -650,7 +647,7 @@ app.post('/auth/resend-verification', rlAuthIp, rlVerifyIp, async (req, res) => 
   }
 
   return res.json({ ok: true, ...(isProd ? {} : { sent: !!updated }) })
-})
+}))
 
 // Notes query validation
 const notesListQuerySchema = z.object({
@@ -664,16 +661,16 @@ const noteUpsertSchema = z.object({
   body: z.string().max(200000),
 })
 
-app.get('/notes', requireAuth, async (req, res) => {
+app.get('/notes', requireAuth, asyncHandler(async (req, res) => {
   const u = getDbUserOr401(req, res)
   if (!u) return
   const { scope } = parseQuery(req, notesListQuerySchema)
   const owned = scope === 'shared' ? [] : db.listNotesOwned(u.id)
   const shared = scope === 'owned' ? [] : db.listNotesSharedForUser(u.id)
   return res.json({ owned, shared })
-})
+}))
 
-app.post('/notes', requireAuth, async (req, res) => {
+app.post('/notes', requireAuth, asyncHandler(async (req, res) => {
   const u = getDbUserOr401(req, res)
   if (!u) return
   const parsed = noteUpsertSchema.safeParse(req.body)
@@ -682,7 +679,7 @@ app.post('/notes', requireAuth, async (req, res) => {
   const note = db.upsertNote(u.id, { id: d.id, subject: d.subject, body: d.body, groupId: u.id })
   audit(req, d.id ? 'note.update' : 'note.create', 'note', note.id, { subject: note.subject })
   return res.json({ note })
-})
+}))
 
 app.delete('/notes/:id', requireAuth, (req, res) => {
   const u = getDbUserOr401(req, res)
@@ -711,7 +708,7 @@ app.get('/shares', requireAuth, (req, res) => {
   return res.json({ incoming, outgoing })
 })
 
-app.post('/shares', requireAuth, async (req, res) => {
+app.post('/shares', requireAuth, asyncHandler(async (req, res) => {
   const u = getDbUserOr401(req, res)
   if (!u) return
   const parsed = shareCreateSchema.safeParse(req.body)
@@ -740,7 +737,7 @@ app.post('/shares', requireAuth, async (req, res) => {
   })
   audit(req, 'share.create', d.resourceType, d.resourceId, { to: grantee.email, permission: d.permission })
   return res.json({ share })
-})
+}))
 
 // Planning: include shared items (scope=owned|shared|all)
 // Planning query validation
@@ -749,7 +746,7 @@ const planningListQuerySchema = z.object({
   scope: z.enum(['all', 'owned', 'shared']).optional().default('all'),
 })
 
-app.get('/planning', requireAuth, async (req, res) => {
+app.get('/planning', requireAuth, asyncHandler(async (req, res) => {
   const u = getDbUserOr401(req, res)
   if (!u) return
   const { date, scope } = parseQuery(req, planningListQuerySchema)
@@ -759,9 +756,9 @@ app.get('/planning', requireAuth, async (req, res) => {
   const shared = date ? sharedAll.filter((p) => p.date === date) : sharedAll
 
   return res.json({ owned, shared })
-})
+}))
 
-app.post('/planning', requireAuth, async (req, res) => {
+app.post('/planning', requireAuth, asyncHandler(async (req, res) => {
   const u = getDbUserOr401(req, res)
   if (!u) return
   const parsed = planningUpsertSchema.safeParse(req.body)
@@ -825,9 +822,9 @@ app.post('/planning', requireAuth, async (req, res) => {
   })
   audit(req, 'planning.create', 'planning', item.id, { date: item.date })
   return res.json({ item, scope: 'owned' })
-})
+}))
 
-app.delete('/planning/:id', requireAuth, async (req, res) => {
+app.delete('/planning/:id', requireAuth, asyncHandler(async (req, res) => {
   const u = getDbUserOr401(req, res)
   if (!u) return
   const id = req.params.id
@@ -838,7 +835,7 @@ app.delete('/planning/:id', requireAuth, async (req, res) => {
   if (!ok) return res.status(404).json({ error: 'not_found' })
   audit(req, 'planning.delete', 'planning', id)
   return res.json({ ok: true })
-})
+}))
 
 // (group planner removed)
 
@@ -882,7 +879,7 @@ app.get('/admin/users', requireAuth, requireAdmin, (_req, res) => {
   return res.json({ users })
 })
 
-app.post('/admin/users', requireAuth, requireAdmin, async (req, res) => {
+app.post('/admin/users', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
   const parsed = adminUserCreateSchema.safeParse(req.body)
   if (!parsed.success) return res.status(400).json({ error: 'invalid_input' })
   const d = parsed.data
@@ -933,9 +930,9 @@ app.post('/admin/users', requireAuth, requireAdmin, async (req, res) => {
       updatedAt: user.updatedAt,
     },
   })
-})
+}))
 
-app.patch('/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
+app.patch('/admin/users/:id', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
   const parsed = adminUserPatchSchema.safeParse(req.body)
   if (!parsed.success) return res.status(400).json({ error: 'invalid_input' })
   const id = req.params.id
@@ -982,7 +979,7 @@ app.patch('/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
       updatedAt: updated.updatedAt,
     },
   })
-})
+}))
 
 app.delete('/admin/users/:id', requireAuth, requireAdmin, (req, res) => {
   const me = getUser(req)!
@@ -1177,6 +1174,20 @@ app.use((err: any, req: express.Request, res: express.Response, _next: express.N
     ...(isDev ? { message: err?.message, details: String(err) } : {}) // Only in dev
   })
 })
+
+// Validate required environment variables (only at runtime, not during build)
+const requiredEnvVars = ['JWT_SECRET']
+const missingVars: string[] = []
+for (const varName of requiredEnvVars) {
+  if (!process.env[varName]) {
+    missingVars.push(varName)
+  }
+}
+if (missingVars.length > 0) {
+  // eslint-disable-next-line no-console
+  console.error(`ERROR: Missing required environment variables: ${missingVars.join(', ')}`)
+  process.exit(1)
+}
 
 const port = Number(process.env.PORT || 3001)
 app.listen(port, () => {

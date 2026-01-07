@@ -20,12 +20,14 @@ export function LoginPage() {
   const [password, setPassword] = useState('')
   const [passwordConfirm, setPasswordConfirm] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [validationIssues, setValidationIssues] = useState<Array<{ path: string; message: string }>>([])
   const [info, setInfo] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   async function submit() {
     setError(null)
     setInfo(null)
+    setValidationIssues([])
     setBusy(true)
     try {
       if (mode === 'register' && password !== passwordConfirm) {
@@ -40,7 +42,13 @@ export function LoginPage() {
             : JSON.stringify({ email, username, firstName, lastName, password, passwordConfirm }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data?.error || 'request_failed')
+      if (!res.ok) {
+        // Show validation issues if available
+        if (data?.issues && Array.isArray(data.issues)) {
+          setValidationIssues(data.issues)
+        }
+        throw new Error(data?.error || 'request_failed')
+      }
 
       // register: verification required
       if (mode === 'register') {
@@ -56,6 +64,10 @@ export function LoginPage() {
       nav(next ? decodeURIComponent(next) : (startPage || '/dashboard'), { replace: true })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'login_failed')
+      // Clear validation issues if it's not an invalid_input error
+      if (e instanceof Error && e.message !== 'invalid_input') {
+        setValidationIssues([])
+      }
     } finally {
       setBusy(false)
     }
@@ -120,7 +132,20 @@ export function LoginPage() {
           )}
 
           {info && <Alert severity="success">{info}</Alert>}
-          {error && <Alert severity="error">{error}</Alert>}
+          {error && (
+            <Alert severity="error">
+              {error}
+              {validationIssues.length > 0 && (
+                <Box component="ul" sx={{ mt: 1, mb: 0, pl: 2 }}>
+                  {validationIssues.map((issue, idx) => (
+                    <li key={idx}>
+                      <strong>{issue.path}:</strong> {issue.message}
+                    </li>
+                  ))}
+                </Box>
+              )}
+            </Alert>
+          )}
           {error === 'email_not_verified' && (
             <Alert severity="info">
               Je email is nog niet geactiveerd.{' '}

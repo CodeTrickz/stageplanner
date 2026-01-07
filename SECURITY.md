@@ -60,3 +60,5 @@ Als je een security vulnerability hebt gevonden, **open GEEN public issue**. In 
 - [Node.js Security Best Practices](https://nodejs.org/en/docs/guides/security/)
 - [Express Security Best Practices](https://expressjs.com/en/advanced/best-practice-security.html)
 
+
+

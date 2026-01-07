@@ -115,6 +115,18 @@ function buildVerifyUrls(rawToken: string) {
 // Load env from backend/env.local if it exists (no dotfile needed)
 dotenv.config({ path: path.resolve(__dirname, '..', 'env.local') })
 
+// Validate required environment variables
+const requiredEnvVars = ['JWT_SECRET']
+const missingVars: string[] = []
+for (const varName of requiredEnvVars) {
+  if (!process.env[varName]) {
+    missingVars.push(varName)
+  }
+}
+if (missingVars.length > 0) {
+  throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`)
+}
+
 const app = express()
 // If behind reverse proxy (nginx), set TRUST_PROXY=1 (or a number) so req.ip is correct.
 if (process.env.TRUST_PROXY) {
@@ -122,7 +134,35 @@ if (process.env.TRUST_PROXY) {
   const v = raw === 'true' ? 1 : raw === 'false' ? 0 : Number(raw)
   if (Number.isFinite(v)) app.set('trust proxy', v)
 }
-app.use(helmet())
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"], // MUI vereist inline styles
+        imgSrc: ["'self'", "data:", "blob:"],
+        connectSrc: ["'self'", process.env.CORS_ORIGIN || 'http://localhost:5173'],
+        fontSrc: ["'self'", "data:"],
+      },
+    },
+    crossOriginEmbedderPolicy: false, // Voor compatibiliteit met bestaande setup
+    hsts: {
+      maxAge: 31536000, // 1 jaar
+      includeSubDomains: true,
+      preload: true,
+    },
+  }),
+)
+// Extra security headers
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  res.setHeader('X-Frame-Options', 'DENY')
+  res.setHeader('X-XSS-Protection', '1; mode=block')
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()')
+  next()
+})
 app.use(
   cors({
     origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
@@ -202,8 +242,16 @@ function getDbUserOr401(req: express.Request, res: express.Response) {
   return u
 }
 
-// Seed default admin (dev/stage)
+// Seed default admin (dev/stage only - NEVER in production)
 ;(function seedAdmin() {
+  // Only seed in development or if explicitly enabled
+  const isProduction = process.env.NODE_ENV === 'production'
+  const seedEnabled = process.env.SEED_ADMIN === 'true'
+  
+  if (isProduction && !seedEnabled) {
+    return // Skip seeding in production unless explicitly enabled
+  }
+
   const email = process.env.ADMIN_EMAIL || 'admin@app.be'
   const password = process.env.ADMIN_PASSWORD || 'admin'
   const username = process.env.ADMIN_USERNAME || 'admin'
@@ -228,6 +276,10 @@ function getDbUserOr401(req: express.Request, res: express.Response) {
   })
   // eslint-disable-next-line no-console
   console.log(`Seeded admin user: ${email} / ${password}`)
+  if (isProduction) {
+    // eslint-disable-next-line no-console
+    console.warn('WARNING: Admin user seeded in production! This should only be done during initial setup.')
+  }
 })()
 
 // Rate limiting (brute-force protection)
@@ -1094,6 +1146,8 @@ const planningUpsertSchema = z.object({
 // Central error handler (must be after routes)
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const isDev = process.env.NODE_ENV !== 'production'
+  
   if (err instanceof ZodError) {
     return res.status(400).json({
       error: 'invalid_input',
@@ -1103,18 +1157,25 @@ app.use((err: any, req: express.Request, res: express.Response, _next: express.N
   if (err instanceof ApiError) {
     return res.status(err.status).json({ error: err.code, ...(err.details != null ? { details: err.details } : {}) })
   }
+  
+  // Log full error details (including stack) for debugging
   appendErrorLog({
     ts: Date.now(),
     type: 'express',
     name: err?.name,
     code: err?.code,
     message: err?.message || String(err),
-    stack: err?.stack,
+    stack: err?.stack, // Always log stack internally
     method: req.method,
     path: req.originalUrl,
     userId: getUser(req)?.id,
   })
-  return res.status(500).json({ error: 'server_error' })
+  
+  // Don't leak error details to client in production
+  return res.status(500).json({ 
+    error: 'server_error',
+    ...(isDev ? { message: err?.message, details: String(err) } : {}) // Only in dev
+  })
 })
 
 const port = Number(process.env.PORT || 3001)

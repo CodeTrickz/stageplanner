@@ -33,6 +33,7 @@ import { db, type NoteDraft, type StoredFile } from '../db/db'
 import { formatBytes } from '../utils/files'
 import { apiFetch, useApiToken } from '../api/client'
 import { useAuth } from '../auth/auth'
+import { useWorkspace } from '../hooks/useWorkspace'
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -58,6 +59,7 @@ function safeFilename(name: string, fallback: string) {
 export function NotesPage() {
   const token = useApiToken()
   const { user } = useAuth()
+  const { currentWorkspace } = useWorkspace()
   const ownerUserId = user?.id || null
   const [params] = useSearchParams()
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -77,12 +79,86 @@ export function NotesPage() {
   const [sharePerm, setSharePerm] = useState<'read' | 'write'>('read')
   const [shareStatus, setShareStatus] = useState<string | null>(null)
 
+  // Sync notes from backend when workspace changes or periodically
+  useEffect(() => {
+    if (!token || !currentWorkspace || !ownerUserId) return
+    const workspaceId = currentWorkspace.id
+    if (!workspaceId) return // Type guard
+    
+    // Extract as string to avoid type narrowing issues
+    const wsIdString: string = String(workspaceId)
+    const encodedId: string = encodeURIComponent(wsIdString)
+    const url: string = `/notes?workspaceId=${encodedId}`
+    const wsId: string = wsIdString
+    
+    let cancelled = false
+    async function sync() {
+      try {
+        const result = await apiFetch(url, { token: token || undefined })
+        if (cancelled) return
+        
+        const remoteNotes = (result.notes || []) as Array<{
+          id: string
+          subject: string
+          body: string
+        }>
+        
+        // Sync remote notes to local DB
+        for (const remote of remoteNotes) {
+          const existing = await db.notes.where('remoteId').equals(remote.id).first()
+          const localNote: Partial<NoteDraft> = {
+            ownerUserId,
+            workspaceId: wsId || undefined,
+            subject: remote.subject,
+            body: remote.body,
+            attachmentFileIds: [],
+            remoteId: remote.id,
+            updatedAt: Date.now(),
+          }
+          
+          if (existing) {
+            await db.notes.update(existing.id!, localNote)
+          } else {
+            localNote.createdAt = Date.now()
+            await db.notes.add(localNote as NoteDraft)
+          }
+        }
+      } catch (e) {
+        // Silently fail - sync errors are expected when offline
+        if (import.meta.env.DEV) {
+          console.error('Failed to sync notes:', e)
+        }
+      }
+    }
+    
+    // Initial sync
+    void sync()
+    
+    // Periodic sync every 30 seconds to catch changes from other users
+    const interval = setInterval(() => {
+      if (!cancelled) void sync()
+    }, 30000)
+    
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [token, currentWorkspace?.id, ownerUserId])
+
   const notes = useLiveQuery(async () => {
     if (!ownerUserId) return []
+    // Filter by workspace if available
+    if (currentWorkspace?.id) {
+      const workspaceId = currentWorkspace.id
+      const list = await db.notes.where('workspaceId').equals(workspaceId).toArray()
+      list.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+      return list
+    }
+    // Fallback to ownerUserId for backward compatibility
     const list = await db.notes.where('ownerUserId').equals(ownerUserId).toArray()
     list.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
     return list
-  }, [ownerUserId])
+  }, [ownerUserId, currentWorkspace?.id])
 
   const files = useLiveQuery(async () => {
     if (!ownerUserId) return []
@@ -152,16 +228,17 @@ export function NotesPage() {
     if (draft.id) {
       await db.notes.update(draft.id, {
         ownerUserId,
+        workspaceId: currentWorkspace?.id ?? undefined,
         subject: draft.subject,
         body: draft.body,
         attachmentFileIds: draft.attachmentFileIds ?? [],
         updatedAt: now,
       })
       // cloud sync (best effort)
-      if (token) {
+      if (token && currentWorkspace) {
         const rec = await db.notes.get(draft.id)
         if (rec) {
-          const remote = await apiFetch('/notes', {
+          const remote = await apiFetch(`/notes?workspaceId=${encodeURIComponent(currentWorkspace.id)}`, {
             method: 'POST',
             token,
             headers: { 'content-type': 'application/json' },
@@ -169,6 +246,7 @@ export function NotesPage() {
               id: rec.remoteId,
               subject: rec.subject,
               body: rec.body,
+              workspaceId: currentWorkspace.id,
             }),
           })
           const remoteId = remote.note?.id as string | undefined
@@ -181,6 +259,7 @@ export function NotesPage() {
 
     const id = await db.notes.add({
       ownerUserId,
+      workspaceId: currentWorkspace?.id || null,
       subject: draft.subject,
       body: draft.body,
       attachmentFileIds: draft.attachmentFileIds ?? [],
@@ -188,16 +267,17 @@ export function NotesPage() {
       updatedAt: now,
     })
     setSelectedId(id)
-    if (token) {
+    if (token && currentWorkspace) {
       const rec = await db.notes.get(id)
       if (rec) {
-        const remote = await apiFetch('/notes', {
+        const remote = await apiFetch(`/notes?workspaceId=${encodeURIComponent(currentWorkspace.id)}`, {
           method: 'POST',
           token,
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
             subject: rec.subject,
             body: rec.body,
+            workspaceId: currentWorkspace.id,
           }),
         })
         const remoteId = remote.note?.id as string | undefined

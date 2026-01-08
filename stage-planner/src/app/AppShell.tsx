@@ -7,6 +7,7 @@ import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings'
 import SettingsIcon from '@mui/icons-material/Settings'
 import SearchIcon from '@mui/icons-material/Search'
 import MenuIcon from '@mui/icons-material/Menu'
+import PeopleIcon from '@mui/icons-material/People'
 import {
   AppBar,
   Box,
@@ -34,6 +35,7 @@ import { subscribeApiStatus } from '../api/client'
 import { useBackendHealth } from '../hooks/useBackendHealth'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { GlobalSearchDialog } from '../components/GlobalSearchDialog'
+import { WorkspaceSelector } from '../components/WorkspaceSelector'
 
 const tabs = [
   { label: 'Dashboard', to: '/dashboard', icon: <DashboardIcon /> },
@@ -43,6 +45,7 @@ const tabs = [
   { label: 'Gedeeld', to: '/shared', icon: <ListAltIcon /> },
   { label: 'Bestanden', to: '/bestanden', icon: <AttachFileIcon /> },
   { label: 'Notities / mail', to: '/notities', icon: <DescriptionIcon /> },
+  { label: 'Team', to: '/team', icon: <PeopleIcon /> },
   { label: 'Instellingen', to: '/settings', icon: <SettingsIcon /> },
   { label: 'Admin', to: '/admin', icon: <AdminPanelSettingsIcon />, adminOnly: true },
 ] as const
@@ -245,6 +248,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Box sx={{ mt: 1 }}>{statusChip}</Box>
         </Box>
         <Divider />
+        {user && (
+          <>
+            <Box sx={{ p: { xs: 1.5, sm: 2 } }}>
+              <WorkspaceSelector />
+            </Box>
+            <Divider />
+          </>
+        )}
         <List disablePadding>
           {visibleTabs.map((t) => (
             <ListItemButton

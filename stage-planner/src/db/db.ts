@@ -42,6 +42,7 @@ export type EntityLink = {
 export type PlanningItem = {
   id?: number
   ownerUserId?: string | null
+  workspaceId?: string | null // Added for workspace filtering
   date: string // YYYY-MM-DD
   start: string // HH:mm
   end: string // HH:mm
@@ -58,6 +59,7 @@ export type PlanningItem = {
 export type NoteDraft = {
   id?: number
   ownerUserId?: string | null
+  workspaceId?: string | null // Added for workspace filtering
   subject: string
   body: string // HTML (rich-text)
   attachmentFileIds: number[]
@@ -89,16 +91,16 @@ class AppDB extends Dexie {
     super('stage-planner-db')
     this.version(1).stores({
       files: '++id, createdAt, name, type, size',
-      planning: '++id, date, start, end, updatedAt',
-      notes: '++id, updatedAt, subject',
+      planning: '++id, date, start, end, updatedAt, workspaceId',
+      notes: '++id, updatedAt, subject, workspaceId',
     })
 
     // v2: planning krijgt priority/status
     this.version(2)
       .stores({
         files: '++id, createdAt, name, type, size',
-        planning: '++id, date, start, end, updatedAt, priority, status',
-        notes: '++id, updatedAt, subject',
+        planning: '++id, date, start, end, updatedAt, priority, status, workspaceId',
+        notes: '++id, updatedAt, subject, workspaceId',
       })
       .upgrade(async (tx) => {
         await tx
@@ -119,6 +121,21 @@ class AppDB extends Dexie {
         links: '++id, fromType, fromId, toType, toKey, createdAt',
         planning: '++id, date, start, end, updatedAt, priority, status',
         notes: '++id, updatedAt, subject',
+      })
+    
+    // v4: Add workspaceId to planning and notes for workspace filtering
+    this.version(4)
+      .stores({
+        files: '++id, createdAt, name, type, size, groupKey, version',
+        fileMeta: '&groupKey, updatedAt, folder',
+        ocr: '&fileId, updatedAt',
+        links: '++id, fromType, fromId, toType, toKey, createdAt',
+        planning: '++id, date, start, end, updatedAt, priority, status, workspaceId',
+        notes: '++id, updatedAt, subject, workspaceId',
+      })
+      .upgrade(async (_tx) => {
+        // workspaceId will be set when items are synced from backend
+        // No need to migrate existing items - they'll get workspaceId on next sync
       })
       .upgrade(async (tx) => {
         const filesTable = tx.table('files')
@@ -263,6 +280,23 @@ class AppDB extends Dexie {
         await markNull('ocr', 'ownerUserId')
         await markNull('links', 'ownerUserId')
         await markNull('notes', 'ownerUserId')
+      })
+
+    // v9: Add workspaceId to planning and notes for workspace filtering
+    this.version(9)
+      .stores({
+        files:
+          '++id, ownerUserId, createdAt, name, type, size, groupKey, version, [ownerUserId+createdAt], [ownerUserId+groupKey]',
+        fileMeta: '&groupKey, ownerUserId, updatedAt, folder',
+        ocr: '&fileId, ownerUserId, updatedAt, [ownerUserId+fileId]',
+        links: '++id, ownerUserId, fromType, fromId, toType, toKey, createdAt, [ownerUserId+fromId]',
+        planning: '++id, ownerUserId, workspaceId, date, start, end, updatedAt, priority, status, tagsJson, remoteId, [ownerUserId+date], [workspaceId+date]',
+        notes: '++id, ownerUserId, workspaceId, updatedAt, subject, remoteId',
+        errors: '++id, createdAt, level, source',
+      })
+      .upgrade(async (_tx) => {
+        // workspaceId will be set when items are synced from backend
+        // No need to migrate existing items - they'll get workspaceId on next sync
       })
   }
 }

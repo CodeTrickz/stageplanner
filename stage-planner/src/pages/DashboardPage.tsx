@@ -5,6 +5,7 @@ import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSettings } from '../app/settings'
 import { useAuth } from '../auth/auth'
+import { useWorkspace } from '../hooks/useWorkspace'
 import { db, type PlanningItem } from '../db/db'
 import { addDays, formatTimeRange, startOfWeekMonday, startOfWeekSunday, yyyyMmDdLocal } from '../utils/date'
 
@@ -87,12 +88,19 @@ export function DashboardPage() {
   const nav = useNavigate()
   const { weekStart, timeFormat } = useSettings()
   const { user } = useAuth()
+  const { currentWorkspace } = useWorkspace()
   const userId = user?.id
   const items = useLiveQuery(async () => {
     if (!userId) return []
+    // Filter by workspace if available, otherwise fallback to ownerUserId
+    if (currentWorkspace?.id) {
+      const list = await db.planning.where('workspaceId').equals(currentWorkspace.id).toArray()
+      return list.sort(byDateTime)
+    }
+    // Fallback to ownerUserId for backward compatibility
     const list = await db.planning.where('ownerUserId').equals(userId).toArray()
     return list.sort(byDateTime)
-  }, [userId])
+  }, [userId, currentWorkspace?.id])
 
   const today = yyyyMmDdLocal(new Date())
   const start = weekStart === 'sunday' ? startOfWeekSunday(new Date()) : startOfWeekMonday(new Date())

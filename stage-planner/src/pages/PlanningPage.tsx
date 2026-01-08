@@ -29,6 +29,7 @@ import { DayTimeline } from '../components/DayTimeline'
 import { MonthCalendar } from '../components/MonthCalendar'
 import { useSettings } from '../app/settings'
 import { useAuth } from '../auth/auth'
+import { useWorkspace } from '../hooks/useWorkspace'
 import { db, type FileMeta, type PlanningItem } from '../db/db'
 import { yyyyMmDdLocal } from '../utils/date'
 import { apiFetch, useApiToken } from '../api/client'
@@ -71,6 +72,7 @@ export function PlanningPage() {
   const fullScreenDialog = useMediaQuery(theme.breakpoints.down('sm'))
   const { user } = useAuth()
   const token = useApiToken()
+  const { currentWorkspace } = useWorkspace()
   const { defaultTaskMinutes, workdayStart, defaultPriority, defaultStatus, timeFormat } = useSettings()
   const userId = user?.id
   const ownerUserId = userId || '__local__'
@@ -87,13 +89,100 @@ export function PlanningPage() {
     tags: '',
   }))
 
+  // Sync items from backend when workspace changes or periodically
+  useEffect(() => {
+    if (!token || !currentWorkspace || !userId) return
+    const workspaceId = currentWorkspace.id
+    if (!workspaceId) return // Type guard
+    
+    // Extract as string to avoid type narrowing issues
+    const wsIdString: string = String(workspaceId)
+    const encodedId: string = encodeURIComponent(wsIdString)
+    const url: string = `/planning?workspaceId=${encodedId}&date=${date}`
+    const wsId: string = wsIdString
+    
+    let cancelled = false
+    async function sync() {
+      try {
+        const result = await apiFetch(url, { token: token || undefined })
+        if (cancelled) return
+        
+        const remoteItems = (result.items || []) as Array<{
+          id: string
+          date: string
+          start: string
+          end: string
+          title: string
+          notes?: string | null
+          priority: 'low' | 'medium' | 'high'
+          status: 'todo' | 'in_progress' | 'done'
+          tagsJson?: string
+        }>
+        
+        // Sync remote items to local DB
+        for (const remote of remoteItems) {
+          const existing = await db.planning.where('remoteId').equals(remote.id).first()
+          const localItem: Partial<PlanningItem> = {
+            ownerUserId: userId,
+            workspaceId: wsId || undefined,
+            date: remote.date,
+            start: remote.start,
+            end: remote.end,
+            title: remote.title,
+            notes: remote.notes ?? undefined,
+            priority: remote.priority,
+            status: remote.status,
+            tagsJson: remote.tagsJson || '[]',
+            remoteId: remote.id,
+            updatedAt: Date.now(),
+          }
+          
+          if (existing) {
+            await db.planning.update(existing.id!, localItem)
+          } else {
+            localItem.createdAt = Date.now()
+            await db.planning.add(localItem as PlanningItem)
+          }
+        }
+      } catch (e) {
+        // Silently fail - sync errors are expected when offline
+        if (import.meta.env.DEV) {
+          console.error('Failed to sync planning items:', e)
+        }
+      }
+    }
+    
+    // Initial sync
+    void sync()
+    
+    // Periodic sync every 30 seconds to catch changes from other users
+    const interval = setInterval(() => {
+      if (!cancelled) void sync()
+    }, 30000)
+    
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [token, currentWorkspace?.id, date, userId])
+
   const items = useLiveQuery(
     async () => {
       if (!userId) return []
+      // Filter by workspace if available
+      if (currentWorkspace?.id) {
+        const workspaceId = currentWorkspace.id
+        const list = await db.planning
+          .where('[workspaceId+date]')
+          .equals([workspaceId, date])
+          .sortBy('start')
+        return list
+      }
+      // Fallback to ownerUserId for backward compatibility
       const list = await db.planning.where('[ownerUserId+date]').equals([userId, date]).sortBy('start')
       return list
     },
-    [userId, date],
+    [userId, date, currentWorkspace?.id],
     [],
   )
 
@@ -202,10 +291,12 @@ export function PlanningPage() {
     if (draft.id) {
       await db.planning.update(draft.id, {
         ...basePayload,
+        workspaceId: currentWorkspace?.id ?? undefined,
       })
     } else {
       const payload: Omit<PlanningItem, 'id'> = {
         ownerUserId: userId,
+        workspaceId: currentWorkspace?.id ?? undefined,
         ...basePayload,
         createdAt: now,
       }
@@ -214,12 +305,12 @@ export function PlanningPage() {
     }
 
     // Cloud sync (best effort)
-    if (token) {
+    if (token && currentWorkspace) {
       const localId = draft.id ?? (await db.planning.where('updatedAt').equals(now).first())?.id
       if (localId) {
         const rec = await db.planning.get(localId)
         if (rec) {
-          const remote = await apiFetch('/planning', {
+          const remote = await apiFetch(`/planning?workspaceId=${encodeURIComponent(currentWorkspace.id)}`, {
             method: 'POST',
             token,
             headers: { 'content-type': 'application/json' },
@@ -232,6 +323,7 @@ export function PlanningPage() {
               notes: rec.notes ?? null,
               priority: rec.priority,
               status: rec.status,
+              workspaceId: currentWorkspace.id,
             }),
           })
           const remoteId = remote.item?.id as string | undefined

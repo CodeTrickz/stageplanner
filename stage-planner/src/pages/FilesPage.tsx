@@ -27,6 +27,7 @@ import { apiFetch, useApiToken } from '../api/client'
 import { categoryLabel, categoryOrder, fileCategory, formatBytes, type FileCategory } from '../utils/files'
 import { makeGroupKey } from '../utils/groupKey'
 import { useAuth } from '../auth/auth'
+import { useWorkspace } from '../hooks/useWorkspace'
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -50,6 +51,7 @@ export function FilesPage() {
   const [preview, setPreview] = useState<StoredFile | null>(null)
   const token = useApiToken()
   const { user } = useAuth()
+  const { currentWorkspace } = useWorkspace()
   const ownerUserId = user?.id || null
   const [q, setQ] = useState('')
   const [folder, setFolder] = useState<string>('__all__')
@@ -65,8 +67,124 @@ export function FilesPage() {
   const [editFolder, setEditFolder] = useState('')
   const [editLabels, setEditLabels] = useState('')
 
+  // Sync files from backend when workspace changes
+  useEffect(() => {
+    if (!token || !currentWorkspace || !ownerUserId) return
+    const workspaceId = currentWorkspace.id
+    if (!workspaceId) return
+
+    const wsIdString: string = String(workspaceId)
+    const encodedId: string = encodeURIComponent(wsIdString)
+    const url: string = `/files?workspaceId=${encodedId}`
+
+    let cancelled = false
+    async function sync() {
+      try {
+        const result = await apiFetch(url, { token: token || undefined })
+        if (cancelled) return
+
+        const remoteFiles = (result.files || []) as Array<{
+          id: string
+          userId: string
+          workspaceId: string | null
+          name: string
+          type: string
+          size: number
+          groupKey: string
+          version: number
+          createdAt: number
+          updatedAt: number
+        }>
+
+        // Sync remote files to local DB
+        for (const remote of remoteFiles) {
+          // Check if file already exists locally
+          const existing = await db.files.where('remoteId').equals(remote.id).first()
+          
+          if (existing) {
+            // Update existing file metadata (but keep local data)
+            await db.files.update(existing.id!, {
+              workspaceId: remote.workspaceId || null,
+              name: remote.name,
+              type: remote.type,
+              size: remote.size,
+              groupKey: remote.groupKey,
+              version: remote.version,
+              remoteId: remote.id,
+            })
+          } else {
+            // Download file data if not exists locally
+            try {
+              // Fetch file as blob
+              const API_BASE = import.meta.env.VITE_API_BASE || (import.meta.env.PROD ? '/api' : 'http://localhost:3001')
+              const fileBlob = await fetch(`${API_BASE}/files/${remote.id}`, {
+                headers: {
+                  authorization: `Bearer ${token}`,
+                },
+              }).then(r => r.blob())
+
+              const localFile: Partial<StoredFile> = {
+                ownerUserId: ownerUserId,
+                workspaceId: remote.workspaceId || null,
+                name: remote.name,
+                type: remote.type,
+                size: remote.size,
+                data: fileBlob,
+                groupKey: remote.groupKey,
+                version: remote.version,
+                remoteId: remote.id,
+                createdAt: remote.createdAt,
+              }
+              await db.files.add(localFile as StoredFile)
+            } catch (e) {
+              // If download fails, still store metadata
+              const localFile: Partial<StoredFile> = {
+                ownerUserId: ownerUserId,
+                workspaceId: remote.workspaceId || null,
+                name: remote.name,
+                type: remote.type,
+                size: remote.size,
+                data: new Blob(), // Empty blob as placeholder
+                groupKey: remote.groupKey,
+                version: remote.version,
+                remoteId: remote.id,
+                createdAt: remote.createdAt,
+              }
+              await db.files.add(localFile as StoredFile)
+            }
+          }
+        }
+      } catch (e) {
+        // Silently fail - sync errors are expected when offline
+        if (import.meta.env.DEV) {
+          console.error('Failed to sync files:', e)
+        }
+      }
+    }
+
+    // Initial sync
+    void sync()
+
+    // Periodic sync every 30 seconds
+    const interval = setInterval(() => {
+      if (!cancelled) void sync()
+    }, 30000)
+
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [token, currentWorkspace?.id, ownerUserId])
+
   const files = useLiveQuery(async () => {
     if (!ownerUserId) return []
+    // Filter by workspace if available
+    if (currentWorkspace?.id) {
+      const list = await db.files.where('workspaceId').equals(currentWorkspace.id).toArray()
+      list.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+      return list
+    }
+    // Fallback to ownerUserId for backward compatibility
     const list = await db.files.where('ownerUserId').equals(ownerUserId).toArray()
     const scoped = list.filter((f) => {
       const k = String(f.groupKey || '')
@@ -77,7 +195,7 @@ export function FilesPage() {
     })
     scoped.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
     return scoped
-  }, [ownerUserId])
+  }, [ownerUserId, currentWorkspace?.id])
 
   const metas = useLiveQuery(async () => {
     if (!ownerUserId) return []
@@ -140,6 +258,7 @@ export function FilesPage() {
 
       items.push({
         ownerUserId,
+        workspaceId: currentWorkspace?.id || null,
         name: f.name,
         type,
         size: f.size,
@@ -165,6 +284,46 @@ export function FilesPage() {
       if (metaToUpsert.length) await db.fileMeta.bulkPut(metaToUpsert)
       await db.files.bulkAdd(items)
       void auditFiles('upload', items)
+
+      // Sync to backend if workspace is active
+      if (token && currentWorkspace) {
+        for (const item of items) {
+          try {
+            // Convert blob to base64
+            const arrayBuffer = await item.data.arrayBuffer()
+            const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)))
+
+            const remote = await apiFetch('/files', {
+              method: 'POST',
+              token,
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                name: item.name,
+                type: item.type,
+                size: item.size,
+                groupKey: item.groupKey,
+                version: item.version,
+                workspaceId: currentWorkspace.id,
+                data: base64,
+              }),
+            })
+
+            const remoteId = remote.file?.id as string | undefined
+            if (remoteId) {
+              // Update local file with remoteId
+              const localFile = await db.files.where('groupKey').equals(item.groupKey).and(f => f.version === item.version).first()
+              if (localFile) {
+                await db.files.update(localFile.id!, { remoteId })
+              }
+            }
+          } catch (e) {
+            // Silently fail - upload will be retried on next sync
+            if (import.meta.env.DEV) {
+              console.error('Failed to upload file to backend:', e)
+            }
+          }
+        }
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Uploaden mislukt.')
     } finally {
@@ -174,8 +333,25 @@ export function FilesPage() {
 
   async function remove(id: number) {
     const f = await db.files.get(id)
+    if (!f) return
+
+    // Delete from backend if remoteId exists
+    if (f.remoteId && token) {
+      try {
+        await apiFetch(`/files/${f.remoteId}`, {
+          method: 'DELETE',
+          token,
+        })
+      } catch (e) {
+        // Silently fail - deletion will be retried on next sync
+        if (import.meta.env.DEV) {
+          console.error('Failed to delete file from backend:', e)
+        }
+      }
+    }
+
     await db.files.delete(id)
-    if (f) void auditFiles('delete', [f])
+    void auditFiles('delete', [f])
   }
 
   async function saveMeta(groupKey: string) {

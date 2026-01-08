@@ -6,7 +6,7 @@ import morgan from 'morgan'
 import bcrypt from 'bcryptjs'
 import { ZodError, z } from 'zod'
 import { getUser, requireAuth, signAccessToken } from './auth'
-import { db, type DbPlanningItem, type DbNote } from './db'
+import { db, type DbPlanningItem, type DbNote, type DbFile } from './db'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { sendMail } from './mail'
@@ -620,6 +620,183 @@ app.post('/audit/files', requireAuth, (req, res) => {
   return res.json({ ok: true })
 })
 
+// Files (cloud) - workspace aware
+const filesListQuerySchema = z.object({
+  workspaceId: z.string().optional(),
+})
+
+const fileUploadSchema = z.object({
+  name: z.string().min(1).max(300),
+  type: z.string().min(1).max(200),
+  size: z.number().int().nonnegative(),
+  groupKey: z.string().min(1).max(400),
+  version: z.number().int().positive().optional().default(1),
+  workspaceId: z.string().optional(),
+  data: z.string(), // base64 encoded file data
+})
+
+app.get('/files', requireAuth, asyncHandler(async (req, res) => {
+  const u = getDbUserOr401(req, res)
+  if (!u) return
+  const { workspaceId } = parseQuery(req, filesListQuerySchema)
+
+  // If workspaceId provided, filter by workspace
+  if (workspaceId) {
+    // Check if user is member of workspace
+    const role = db.getMembershipRole(u.id, workspaceId)
+    if (!role) return res.status(403).json({ error: 'not_member' })
+
+    const files = db.listFilesForWorkspace(workspaceId)
+    // Return files without data (too large for JSON)
+    const filesWithoutData = files.map(f => ({
+      id: f.id,
+      userId: f.userId,
+      workspaceId: f.workspaceId,
+      name: f.name,
+      type: f.type,
+      size: f.size,
+      groupKey: f.groupKey,
+      version: f.version,
+      createdAt: f.createdAt,
+      updatedAt: f.updatedAt,
+    }))
+    return res.json({ files: filesWithoutData, workspaceId })
+  }
+
+  // Legacy: list all files for user
+  const files = db.listFilesForUser(u.id)
+  const filesWithoutData = files.map(f => ({
+    id: f.id,
+    userId: f.userId,
+    workspaceId: f.workspaceId,
+    name: f.name,
+    type: f.type,
+    size: f.size,
+    groupKey: f.groupKey,
+    version: f.version,
+    createdAt: f.createdAt,
+    updatedAt: f.updatedAt,
+  }))
+  return res.json({ files: filesWithoutData })
+}))
+
+app.get('/files/:id', requireAuth, asyncHandler(async (req, res) => {
+  const u = getDbUserOr401(req, res)
+  if (!u) return
+  const fileId = req.params.id
+
+  const file = db.getFileById(fileId)
+  if (!file) return res.status(404).json({ error: 'not_found' })
+
+  // Check workspace membership if file belongs to workspace
+  if (file.workspaceId) {
+    const role = db.getMembershipRole(u.id, file.workspaceId)
+    if (!role) return res.status(403).json({ error: 'not_member' })
+  } else {
+    // Personal file - only owner can access
+    if (file.userId !== u.id) return res.status(403).json({ error: 'forbidden' })
+  }
+
+  res.setHeader('Content-Type', file.type)
+  res.setHeader('Content-Disposition', `attachment; filename="${file.name}"`)
+  res.setHeader('Content-Length', file.size.toString())
+  return res.send(file.data)
+}))
+
+app.post('/files', requireAuth, asyncHandler(async (req, res) => {
+  const u = getDbUserOr401(req, res)
+  if (!u) return
+
+  const parsed = fileUploadSchema.safeParse(req.body)
+  if (!parsed.success) return res.status(400).json({ error: 'invalid_input', issues: parsed.error.issues })
+
+  const d = parsed.data
+
+  // Check workspace membership if workspaceId provided
+  let finalWorkspaceId: string | null = null
+  if (d.workspaceId) {
+    const role = db.getMembershipRole(u.id, d.workspaceId)
+    if (!role) return res.status(403).json({ error: 'not_member' })
+    
+    // Only STUDENT can upload files
+    if (!canCreateInWorkspace(u.id, d.workspaceId)) {
+      return res.status(403).json({ error: 'only_students_can_create' })
+    }
+    finalWorkspaceId = d.workspaceId
+  }
+
+  // Decode base64 data
+  let data: Buffer
+  try {
+    data = Buffer.from(d.data, 'base64')
+  } catch (e) {
+    return res.status(400).json({ error: 'invalid_file_data' })
+  }
+
+  // Validate size matches
+  if (data.length !== d.size) {
+    return res.status(400).json({ error: 'size_mismatch' })
+  }
+
+  // Check if file with same groupKey exists
+  const existing = db.getLatestFileByGroupKey(d.groupKey, finalWorkspaceId)
+  if (existing && existing.version >= d.version) {
+    return res.status(400).json({ error: 'version_conflict' })
+  }
+
+  const file = db.createFile({
+    userId: u.id,
+    workspaceId: finalWorkspaceId,
+    name: d.name,
+    type: d.type,
+    size: d.size,
+    groupKey: d.groupKey,
+    version: d.version,
+    data,
+  })
+
+  audit(req, 'file.upload', 'file', file.id, { workspaceId: finalWorkspaceId, name: file.name, size: file.size })
+  return res.json({
+    file: {
+      id: file.id,
+      userId: file.userId,
+      workspaceId: file.workspaceId,
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      groupKey: file.groupKey,
+      version: file.version,
+      createdAt: file.createdAt,
+      updatedAt: file.updatedAt,
+    },
+  })
+}))
+
+app.delete('/files/:id', requireAuth, asyncHandler(async (req, res) => {
+  const u = getDbUserOr401(req, res)
+  if (!u) return
+  const fileId = req.params.id
+
+  const file = db.getFileById(fileId)
+  if (!file) return res.status(404).json({ error: 'not_found' })
+
+  // Check permissions
+  if (file.workspaceId) {
+    // Workspace file - only STUDENT can delete
+    if (!canDeleteInWorkspace(u.id, file.workspaceId, file.userId)) {
+      return res.status(403).json({ error: 'insufficient_permissions' })
+    }
+  } else {
+    // Personal file - only owner can delete
+    if (file.userId !== u.id) return res.status(403).json({ error: 'forbidden' })
+  }
+
+  const deleted = db.deleteFile(fileId, u.id)
+  if (!deleted) return res.status(404).json({ error: 'not_found' })
+
+  audit(req, 'file.delete', 'file', fileId, { workspaceId: file.workspaceId, name: file.name })
+  return res.json({ ok: true })
+}))
 
 const verifyBodySchema = z.object({ token: z.string().min(10).max(5000) })
 app.post('/auth/verify', rlVerifyIp, asyncHandler(async (req, res) => {

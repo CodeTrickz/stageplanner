@@ -126,6 +126,20 @@ export type DbPlanningItem = {
   updatedAt: number
 }
 
+export type DbFile = {
+  id: string
+  userId: string
+  workspaceId: string | null
+  name: string
+  type: string
+  size: number
+  groupKey: string
+  version: number
+  data: Buffer
+  createdAt: number
+  updatedAt: number
+}
+
 type JsonState = {
   groups: DbGroup[]
   users: DbUser[]
@@ -415,6 +429,25 @@ function openSqlite() {
       updated_at INTEGER NOT NULL,
       FOREIGN KEY(author_id) REFERENCES users(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS files (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      workspace_id TEXT,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      group_key TEXT NOT NULL,
+      version INTEGER NOT NULL DEFAULT 1,
+      data BLOB NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY(workspace_id) REFERENCES groups(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_files_workspace ON files(workspace_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_files_group_key ON files(group_key, version);
+    CREATE INDEX IF NOT EXISTS idx_files_user ON files(user_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_feedback_resource ON feedback(resource_type, resource_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_feedback_author ON feedback(author_id, created_at);
   `)
@@ -2293,6 +2326,139 @@ export const db = {
       if (userId === removedBy) return false
 
       const info = sqliteDb.prepare(`DELETE FROM group_memberships WHERE group_id=? AND user_id=?`).run(workspaceId, userId)
+      return info.changes > 0
+    }
+    return false
+  },
+
+  // Files
+  createFile: (input: {
+    userId: string
+    workspaceId: string | null
+    name: string
+    type: string
+    size: number
+    groupKey: string
+    version: number
+    data: Buffer
+  }): DbFile => {
+    const t = now()
+    const file: DbFile = {
+      id: uuid(),
+      userId: input.userId,
+      workspaceId: input.workspaceId,
+      name: input.name,
+      type: input.type,
+      size: input.size,
+      groupKey: input.groupKey,
+      version: input.version,
+      data: input.data,
+      createdAt: t,
+      updatedAt: t,
+    }
+    if (sqliteDb) {
+      sqliteDb
+        .prepare(
+          `INSERT INTO files (id, user_id, workspace_id, name, type, size, group_key, version, data, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          file.id,
+          file.userId,
+          file.workspaceId,
+          file.name,
+          file.type,
+          file.size,
+          file.groupKey,
+          file.version,
+          file.data,
+          file.createdAt,
+          file.updatedAt,
+        )
+    }
+    return file
+  },
+
+  getFileById: (id: string): DbFile | null => {
+    if (sqliteDb) {
+      const row = sqliteDb
+        .prepare(
+          `SELECT id, user_id as userId, workspace_id as workspaceId, name, type, size, group_key as groupKey, version, data, created_at as createdAt, updated_at as updatedAt
+           FROM files WHERE id=?`,
+        )
+        .get(id) as any
+      if (!row) return null
+      return {
+        id: row.id,
+        userId: row.userId,
+        workspaceId: row.workspaceId,
+        name: row.name,
+        type: row.type,
+        size: row.size,
+        groupKey: row.groupKey,
+        version: row.version,
+        data: row.data,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      }
+    }
+    return null
+  },
+
+  listFilesForWorkspace: (workspaceId: string): DbFile[] => {
+    if (sqliteDb) {
+      return sqliteDb
+        .prepare(
+          `SELECT id, user_id as userId, workspace_id as workspaceId, name, type, size, group_key as groupKey, version, data, created_at as createdAt, updated_at as updatedAt
+           FROM files WHERE workspace_id=? ORDER BY created_at DESC`,
+        )
+        .all(workspaceId) as DbFile[]
+    }
+    return []
+  },
+
+  listFilesForUser: (userId: string): DbFile[] => {
+    if (sqliteDb) {
+      return sqliteDb
+        .prepare(
+          `SELECT id, user_id as userId, workspace_id as workspaceId, name, type, size, group_key as groupKey, version, data, created_at as createdAt, updated_at as updatedAt
+           FROM files WHERE user_id=? ORDER BY created_at DESC`,
+        )
+        .all(userId) as DbFile[]
+    }
+    return []
+  },
+
+  getLatestFileByGroupKey: (groupKey: string, workspaceId: string | null): DbFile | null => {
+    if (sqliteDb) {
+      const row = sqliteDb
+        .prepare(
+          `SELECT id, user_id as userId, workspace_id as workspaceId, name, type, size, group_key as groupKey, version, data, created_at as createdAt, updated_at as updatedAt
+           FROM files WHERE group_key=? AND (workspace_id=? OR (workspace_id IS NULL AND ? IS NULL))
+           ORDER BY version DESC LIMIT 1`,
+        )
+        .get(groupKey, workspaceId, workspaceId) as any
+      if (!row) return null
+      return {
+        id: row.id,
+        userId: row.userId,
+        workspaceId: row.workspaceId,
+        name: row.name,
+        type: row.type,
+        size: row.size,
+        groupKey: row.groupKey,
+        version: row.version,
+        data: row.data,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      }
+    }
+    return null
+  },
+
+  deleteFile: (id: string, userId: string): boolean => {
+    if (sqliteDb) {
+      const info = sqliteDb.prepare(`DELETE FROM files WHERE id=? AND user_id=?`).run(id, userId)
       return info.changes > 0
     }
     return false

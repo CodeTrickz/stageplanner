@@ -3,6 +3,7 @@ import Dexie, { type Table } from 'dexie'
 export type StoredFile = {
   id?: number
   ownerUserId?: string | null
+  workspaceId?: string | null // Added for workspace filtering
   name: string
   type: string
   size: number
@@ -10,6 +11,7 @@ export type StoredFile = {
   createdAt: number
   groupKey: string
   version: number
+  remoteId?: string // Backend file ID for sync
 }
 
 export type FileMeta = {
@@ -297,6 +299,29 @@ class AppDB extends Dexie {
       .upgrade(async (_tx) => {
         // workspaceId will be set when items are synced from backend
         // No need to migrate existing items - they'll get workspaceId on next sync
+      })
+
+    // v10: Add workspaceId and remoteId to files for workspace sync
+    this.version(10)
+      .stores({
+        files:
+          '++id, ownerUserId, workspaceId, createdAt, name, type, size, groupKey, version, remoteId, [ownerUserId+createdAt], [ownerUserId+groupKey], [workspaceId+createdAt]',
+        fileMeta: '&groupKey, ownerUserId, updatedAt, folder',
+        ocr: '&fileId, ownerUserId, updatedAt, [ownerUserId+fileId]',
+        links: '++id, ownerUserId, fromType, fromId, toType, toKey, createdAt, [ownerUserId+fromId]',
+        planning: '++id, ownerUserId, workspaceId, date, start, end, updatedAt, priority, status, tagsJson, remoteId, [ownerUserId+date], [workspaceId+date]',
+        notes: '++id, ownerUserId, workspaceId, updatedAt, subject, remoteId',
+        errors: '++id, createdAt, level, source',
+      })
+      .upgrade(async (_tx) => {
+        // Mark existing files as having no workspaceId (null)
+        await _tx
+          .table('files')
+          .toCollection()
+          .modify((it: Record<string, unknown>) => {
+            if (it.workspaceId === undefined) it.workspaceId = null
+            if (it.remoteId === undefined) it.remoteId = null
+          })
       })
   }
 }

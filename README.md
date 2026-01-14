@@ -76,6 +76,25 @@ Kopieer `backend/env.example` naar `backend/env.local` en pas aan:
 - `APP_URL`: Public URL van de applicatie (voor verificatie emails)
 - `CORS_ORIGIN`: CORS origin (moet matchen met frontend URL)
 
+#### Admin Gebruiker
+
+De applicatie maakt automatisch een default admin gebruiker aan bij het opstarten (in development mode of als `SEED_ADMIN=true` is ingesteld).
+
+**Default credentials:**
+- **Email**: `admin@app.be`
+- **Username**: `admin`
+- **Password**: `admin`
+
+Je kunt deze aanpassen via environment variables in `backend/env.local`:
+- `SEED_ADMIN=true` - Zet op `true` om admin seeding in te schakelen (standaard aan in development)
+- `ADMIN_EMAIL=admin@app.be` - Admin email adres
+- `ADMIN_USERNAME=admin` - Admin gebruikersnaam
+- `ADMIN_PASSWORD=admin` - Admin wachtwoord
+
+**⚠️ Belangrijk voor productie:**
+- Wijzig de admin credentials in productie via `.env` bestand
+- Of zet `SEED_ADMIN=false` en maak handmatig een admin gebruiker aan via de API
+
 ### Frontend
 
 De frontend gebruikt environment variables via Vite. Zie `stage-planner/.env.example` (indien aanwezig).

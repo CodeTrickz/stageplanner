@@ -66,9 +66,17 @@ Thumbs.db
 
 # --- Docker ---
 .dockerignore
+docker-compose.yml.bak
+*.bak
+
+# --- Traefik / SSL ---
+traefik/letsencrypt/acme.json
+traefik/letsencrypt/*.json
+!traefik/letsencrypt/.gitkeep
 
 # --- Misc ---
 *.local
 .cache/
 .temp/
 .tmp/
+

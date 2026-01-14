@@ -1,4 +1,37 @@
 services:
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    command:
+      - "--api.dashboard=true"
+      - "--api.insecure=false"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/letsencrypt:/letsencrypt
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik-dashboard.rule=Host(`${SUBDOMAIN:-traefik}.${DOMAIN}`)"
+      - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
+      - "traefik.http.routers.traefik-dashboard.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.traefik-dashboard.service=api@internal"
+      - "traefik.http.routers.traefik-dashboard.middlewares=auth"
+      - "traefik.http.middlewares.auth.basicauth.users=${TRAEFIK_AUTH}"
+    restart: unless-stopped
+    networks:
+      - default
+
   backend:
     build:
       context: ./backend
@@ -8,8 +41,8 @@ services:
       - PORT=3001
       - DB_PATH=/app/data/prod.sqlite
       - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env (use a long random string)}
-      - APP_URL=${APP_URL:?Set APP_URL in .env (e.g. https://planner.example.com)}
-      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:8080}
+      - APP_URL=${APP_URL:-https://${DOMAIN}}
+      - CORS_ORIGIN=${CORS_ORIGIN:-https://${DOMAIN}}
     volumes:
       # Persist sqlite + logs on the host so you can inspect `backend/data/mails.log`, etc.
       - ./backend/data:/app/data
@@ -33,6 +66,8 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    networks:
+      - default
 
   web:
     build:
@@ -41,8 +76,14 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-    ports:
-      - "${WEB_PORT:-8080}:8080"
+      traefik:
+        condition: service_started
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.web.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.web.entrypoints=websecure"
+      - "traefik.http.routers.web.tls.certresolver=letsencrypt"
+      - "traefik.http.services.web.loadbalancer.server.port=8080"
     read_only: true
     tmpfs:
       - /tmp:uid=101,gid=101,mode=1777
@@ -62,5 +103,10 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    networks:
+      - default
 
 volumes: {}
+networks:
+  default:
+    name: stageplanner_default

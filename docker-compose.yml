@@ -14,12 +14,25 @@ services:
       - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
       - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
       - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      # Metrics (Prometheus)
+      - "--metrics.prometheus=true"
+      - "--metrics.prometheus.addEntryPointsLabels=true"
+      - "--metrics.prometheus.addServicesLabels=true"
+      # Tracing (OpenTelemetry - disabled for now, can be enabled later)
+      # - "--tracing.otlp=true"
+      # - "--tracing.otlp.endpoint=jaeger:4317"
+      # Access logs
+      - "--accesslog=true"
+      - "--accesslog.filepath=/var/log/traefik/access.log"
+      - "--accesslog.format=json"
+      - "--accesslog.bufferingSize=100"
     ports:
       - "80:80"
       - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik/letsencrypt:/letsencrypt
+      - ./traefik/logs:/var/log/traefik
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.traefik-dashboard.rule=Host(`${SUBDOMAIN:-traefik}.${DOMAIN}`)"
@@ -28,6 +41,49 @@ services:
       - "traefik.http.routers.traefik-dashboard.service=api@internal"
       - "traefik.http.routers.traefik-dashboard.middlewares=auth"
       - "traefik.http.middlewares.auth.basicauth.users=${TRAEFIK_AUTH}"
+      # Metrics endpoint
+      - "traefik.http.routers.metrics.rule=Host(`metrics.${DOMAIN}`)"
+      - "traefik.http.routers.metrics.entrypoints=websecure"
+      - "traefik.http.routers.metrics.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.metrics.service=prometheus"
+      - "traefik.http.routers.metrics.middlewares=auth"
+      # Tracing endpoint (Jaeger dashboard - tracing zelf werkt niet in Traefik v3)
+      - "traefik.http.routers.tracing.rule=Host(`tracing.${DOMAIN}`)"
+      - "traefik.http.routers.tracing.entrypoints=websecure"
+      - "traefik.http.routers.tracing.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.tracing.service=jaeger"
+      - "traefik.http.routers.tracing.middlewares=auth"
+    restart: unless-stopped
+    networks:
+      - default
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./traefik/prometheus:/etc/prometheus
+      - prometheus_data:/prometheus
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
+    restart: unless-stopped
+    networks:
+      - default
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: jaeger
+    environment:
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.jaeger.loadbalancer.server.port=16686"
     restart: unless-stopped
     networks:
       - default
@@ -106,7 +162,9 @@ services:
     networks:
       - default
 
-volumes: {}
+volumes:
+  prometheus_data:
+
 networks:
   default:
     name: stageplanner_default

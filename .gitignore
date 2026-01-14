@@ -74,6 +74,11 @@ traefik/letsencrypt/acme.json
 traefik/letsencrypt/*.json
 !traefik/letsencrypt/.gitkeep
 
+# --- Traefik Logs ---
+traefik/logs/*.log
+traefik/logs/*
+!traefik/logs/.gitkeep
+
 # --- Misc ---
 *.local
 .cache/

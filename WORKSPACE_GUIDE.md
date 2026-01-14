@@ -84,3 +84,5 @@ Dit betekent dat je nog geen workspace hebt. Elke gebruiker zou automatisch een 
 Alleen de eigenaar (Student) van een workspace kan leden uitnodigen. Controleer je rol in de workspace selector.
 
 
+
+

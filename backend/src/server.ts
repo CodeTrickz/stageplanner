@@ -333,7 +333,11 @@ const rlLoginIdentity = makeRateLimiter({
   name: 'login_identity',
   windowMs: 10 * 60 * 1000,
   max: 12,
-  key: (req) => `${req.ip || 'unknown'}:${String((req.body as any)?.email || '').trim().toLowerCase()}`,
+  key: (req) => {
+    const body: any = req.body || {}
+    const identifier = String(body.identifier || body.email || '').trim().toLowerCase()
+    return `${req.ip || 'unknown'}:${identifier}`
+  },
 })
 const rlVerifyIp = makeRateLimiter({
   name: 'verify_ip',
@@ -395,7 +399,7 @@ app.post('/auth/register', rlAuthIp, asyncHandler(async (req, res) => {
 }))
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  identifier: z.string().min(1).max(300), // email or username
   password: z.string().min(1).max(200),
 })
 
@@ -423,8 +427,19 @@ function issueRefreshToken(userId: string, req: express.Request) {
 }
 
 app.post('/auth/login', rlAuthIp, rlLoginIdentity, asyncHandler(async (req, res) => {
-  const { email, password } = parseBody(req, loginSchema)
-  const user = db.findUserByEmail(email)
+  const { identifier, password } = parseBody(req, loginSchema)
+  const rawId = identifier.trim()
+
+  let user = null
+  // If it looks like an email, try email first
+  if (rawId.includes('@')) {
+    user = db.findUserByEmail(rawId)
+  }
+  // Fallback to username if not found by email or if no '@'
+  if (!user) {
+    user = db.findUserByUsername(rawId)
+  }
+
   if (!user) return res.status(401).json({ error: 'invalid_credentials' })
   if (!user.emailVerified) return res.status(403).json({ error: 'email_not_verified' })
 

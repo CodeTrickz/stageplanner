@@ -2315,9 +2315,7 @@ export const db = {
   // Workspace member management
   updateWorkspaceMemberRole: (workspaceId: string, userId: string, newRole: WorkspaceRole, updatedBy: string): boolean => {
     if (sqliteDb) {
-      // Only STUDENT (owner) can update roles
-      const workspace = sqliteDb.prepare(`SELECT owner_id FROM groups WHERE id=?`).get(workspaceId) as { owner_id?: string } | undefined
-      if (workspace?.owner_id !== updatedBy) return false
+      // Permission already enforced in API middleware (requireWorkspaceStudent)
 
       const info = sqliteDb
         .prepare(`UPDATE group_memberships SET role=? WHERE group_id=? AND user_id=?`)
@@ -2329,9 +2327,7 @@ export const db = {
 
   removeWorkspaceMember: (workspaceId: string, userId: string, removedBy: string): boolean => {
     if (sqliteDb) {
-      // Only STUDENT (owner) can remove members
-      const workspace = sqliteDb.prepare(`SELECT owner_id FROM groups WHERE id=?`).get(workspaceId) as { owner_id?: string } | undefined
-      if (workspace?.owner_id !== removedBy) return false
+      // Permission already enforced in API middleware (requireWorkspaceStudent)
       // Can't remove yourself
       if (userId === removedBy) return false
 

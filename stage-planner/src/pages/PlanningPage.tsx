@@ -89,7 +89,16 @@ export function PlanningPage() {
   const { user } = useAuth()
   const token = useApiToken()
   const { currentWorkspace } = useWorkspace()
-  const { defaultTaskMinutes, workdayStart, defaultPriority, defaultStatus, timeFormat } = useSettings()
+  const {
+    defaultTaskMinutes,
+    workdayStart,
+    defaultPriority,
+    defaultStatus,
+    timeFormat,
+    stageStart,
+    stageEnd,
+    stageHolidaysJson,
+  } = useSettings()
   const userId = user?.id
   const ownerUserId = userId || '__local__'
   const [date, setDate] = useState(() => yyyyMmDdLocal(new Date()))
@@ -105,6 +114,20 @@ export function PlanningPage() {
     tags: '',
     stageType: 'none',
   }))
+
+  const holidaySet = useMemo(() => {
+    try {
+      const arr = JSON.parse(stageHolidaysJson || '[]') as string[]
+      return new Set((arr || []).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)))
+    } catch {
+      return new Set<string>()
+    }
+  }, [stageHolidaysJson])
+
+  const isWithinStage = (d: string) => {
+    if (!stageStart || !stageEnd) return true
+    return d >= stageStart && d <= stageEnd
+  }
 
   // Sync items from backend when workspace changes or periodically
   useEffect(() => {
@@ -480,6 +503,7 @@ export function PlanningPage() {
                 try {
                   const tags = JSON.parse(it.tagsJson || '[]') as string[]
                   const stageType = stageTypeFromTags(tags)
+                  const isBlocked = stageType === 'work' && (!isWithinStage(it.date) || holidaySet.has(it.date))
                   const visibleTags = stripStageTags(tags)
                   return stageType !== 'none' || visibleTags.length ? (
                     <Stack direction="row" spacing={1} sx={{ mt: 1 }} useFlexGap flexWrap="wrap">
@@ -488,6 +512,14 @@ export function PlanningPage() {
                           size="small"
                           label={stageType === 'work' ? 'Stage werkdag' : 'Thuis project'}
                           color={stageType === 'work' ? 'primary' : 'default'}
+                          variant="outlined"
+                        />
+                      )}
+                      {isBlocked && (
+                        <Chip
+                          size="small"
+                          label="Niet-werkdag"
+                          color="warning"
                           variant="outlined"
                         />
                       )}

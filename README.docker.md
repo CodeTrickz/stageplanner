@@ -1,13 +1,18 @@
-## Docker (production-ish) run
+## Docker (production)
 
 ### 1) Create `.env`
 
 Docker Compose reads a `.env` file automatically. Copy `env.example` to `.env` and edit it:
 
-- **JWT_SECRET**: must be a long random secret
-- **APP_URL**: public URL of your app (used in verification emails)
-- **CORS_ORIGIN**: must match where you open the UI
-- **WEB_PORT**: optional host port (default 8080)
+- **DOMAIN**: your public domain (e.g. `example.com`)
+- **SUBDOMAIN**: Traefik dashboard subdomain (default `traefik`)
+- **ACME_EMAIL**: Let's Encrypt email
+- **TRAEFIK_AUTH**: basic auth hash for Traefik/metrics/tracing dashboards
+- **JWT_SECRET**: long random secret
+- **APP_URL**: public URL of your app (e.g. `https://example.com`)
+- **CORS_ORIGIN**: must match where you open the UI (e.g. `https://example.com`)
+- **SMTP_HOST/SMTP_USER/SMTP_PASS**: SMTP settings for real email sending (optional)
+- **MAIL_FROM**: From address (optional, defaults to `SMTP_USER`)
 
 ### 2) Start
 
@@ -17,13 +22,16 @@ docker compose up --build -d
 
 ### 3) Open
 
-- Web UI: `http://localhost:8080` (or your `WEB_PORT`)
+- Web UI: `https://<DOMAIN>`
+- Traefik dashboard: `https://<SUBDOMAIN>.<DOMAIN>`
+- Prometheus: `https://metrics.<DOMAIN>`
+- Jaeger UI: `https://tracing.<DOMAIN>`
 
-### Notes for serious deployment
+### Notes
 
-- Put this behind HTTPS (e.g. Caddy/Traefik/Nginx Proxy Manager) and set `APP_URL` + `CORS_ORIGIN` to your real domain.
-- The backend is **not exposed** to the host (only reachable via the web container).
-- SQLite data is persisted in the `backend-data` volume.
+- Traefik terminates TLS and issues certificates via Let's Encrypt.
+- The backend is **not exposed** to the host (only reachable via Traefik).
+- SQLite data is stored in `backend/data` (bind mount).
 
 
 

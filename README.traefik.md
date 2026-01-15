@@ -1,6 +1,6 @@
 # Traefik Reverse Proxy Setup
 
-Dit project gebruikt Traefik als reverse proxy met Let's Encrypt SSL certificaten.
+Dit project gebruikt Traefik v2.10 als reverse proxy met Let's Encrypt SSL certificaten, Prometheus metrics en Jaeger tracing.
 
 ## Configuratie
 
@@ -50,8 +50,10 @@ Zorg ervoor dat deze poorten open zijn in je firewall.
 
 - **Web Applicatie**: `https://example.com` (of je ingestelde DOMAIN)
 - **Traefik Dashboard**: `https://traefik.example.com` (of je ingestelde SUBDOMAIN)
+- **Prometheus**: `https://metrics.example.com`
+- **Jaeger UI**: `https://tracing.example.com`
 
-Het Traefik dashboard is beveiligd met basic auth (gebruik de credentials die je hebt ingesteld in `TRAEFIK_AUTH`).
+Het Traefik dashboard, Prometheus en Jaeger UI zijn beveiligd met basic auth (gebruik de credentials die je hebt ingesteld in `TRAEFIK_AUTH`).
 
 ## SSL Certificaten
 
@@ -78,3 +80,9 @@ Let's Encrypt certificaten worden automatisch aangevraagd en vernieuwd door Trae
 1. Controleer of de `web` container draait: `docker compose ps`
 2. Controleer of `DOMAIN` correct is ingesteld in `.env`
 3. Bekijk de logs: `docker compose logs web traefik`
+
+### Tracing of metrics zijn niet bereikbaar
+
+1. Controleer of `prometheus` en `jaeger` draaien: `docker compose ps`
+2. Controleer of `metrics.<DOMAIN>` en `tracing.<DOMAIN>` in DNS staan
+3. Bekijk de logs: `docker compose logs prometheus jaeger`

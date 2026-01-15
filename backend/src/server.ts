@@ -517,8 +517,8 @@ app.post('/auth/register', rlAuthIp, asyncHandler(async (req, res) => {
 
   await sendMail({
     to: user.email,
-    subject: 'Activeer je account (Stage Planner)',
-    text: `Welkom ${user.firstName}!\n\nKlik om je account te activeren:\n${appVerifyUrl}\n\nWerkt dat niet? Gebruik deze directe link:\n${apiVerifyUrl}\n\nDeze link is 24 uur geldig.`,
+    subject: 'Stage Planner: account activatie',
+    text: `Activeer je account:\n${appVerifyUrl}\n\nDirecte link (als dit niet werkt):\n${apiVerifyUrl}\n\nDeze link is 24 uur geldig.`,
   })
 
   return res.json({ ok: true, message: 'verification_required' })
@@ -977,8 +977,8 @@ app.post('/auth/resend-verify', rlAuthIp, rlVerifyIp, asyncHandler(async (req, r
   const { appVerifyUrl, apiVerifyUrl } = buildVerifyUrls(rawToken)
   await sendMail({
     to: email,
-    subject: 'Nieuwe activatie-link (Stage Planner)',
-    text: `Klik om je account te activeren:\n${appVerifyUrl}\n\nWerkt dat niet? Directe link:\n${apiVerifyUrl}\n\nDeze link is 24 uur geldig.`,
+    subject: 'Stage Planner: nieuwe activatielink',
+    text: `Activeer je account:\n${appVerifyUrl}\n\nDirecte link (als dit niet werkt):\n${apiVerifyUrl}\n\nDeze link is 24 uur geldig.`,
   })
 
   return res.json({ ok: true, ...(isProd ? {} : { sent: true }) })
@@ -1002,8 +1002,8 @@ app.post('/auth/resend-verification', rlAuthIp, rlVerifyIp, asyncHandler(async (
     const { appVerifyUrl, apiVerifyUrl } = buildVerifyUrls(rawToken)
     await sendMail({
       to: email,
-      subject: 'Nieuwe activatie-link (Stage Planner)',
-      text: `Klik om je account te activeren:\n${appVerifyUrl}\n\nWerkt dat niet? Directe link:\n${apiVerifyUrl}\n\nDeze link is 24 uur geldig.`,
+      subject: 'Stage Planner: nieuwe activatielink',
+      text: `Activeer je account:\n${appVerifyUrl}\n\nDirecte link (als dit niet werkt):\n${apiVerifyUrl}\n\nDeze link is 24 uur geldig.`,
     })
   }
 
@@ -1355,8 +1355,8 @@ app.post('/admin/users', requireAuth, requireAdmin, asyncHandler(async (req, res
     const { appVerifyUrl, apiVerifyUrl } = buildVerifyUrls(rawToken)
     await sendMail({
       to: d.email,
-      subject: 'Activeer je account (Stage Planner)',
-      text: `Welkom ${d.firstName}!\n\nKlik om je account te activeren:\n${appVerifyUrl}\n\nWerkt dat niet? Directe link:\n${apiVerifyUrl}\n\nDeze link is 24 uur geldig.`,
+      subject: 'Stage Planner: account activatie',
+      text: `Activeer je account:\n${appVerifyUrl}\n\nDirecte link (als dit niet werkt):\n${apiVerifyUrl}\n\nDeze link is 24 uur geldig.`,
     })
   }
 
@@ -1702,8 +1702,8 @@ app.post('/workspaces/:id/invite', requireAuth, requireWorkspaceStudent, asyncHa
 
   await sendMail({
     to: email,
-    subject: `Uitnodiging voor Workspace: ${workspace.name}`,
-    text: `${u.firstName} ${u.lastName} heeft je uitgenodigd voor de workspace "${workspace.name}" als ${role}.\n\nAccepteer de uitnodiging:\n${inviteUrl}\n\nDeze link is 7 dagen geldig.`,
+    subject: `Stage Planner: workspace uitnodiging`,
+    text: `Je bent uitgenodigd voor de workspace "${workspace.name}" (${role}).\n\nAccepteer de uitnodiging:\n${inviteUrl}\n\nDeze link is 7 dagen geldig.`,
   })
 
   audit(req, 'workspace.invite', 'workspace', workspaceId, { email, role })

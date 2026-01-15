@@ -3,30 +3,21 @@
 ## [Unreleased]
 
 ### Added
-- Mobile-first responsive design throughout the application
-- Improved navigation with responsive breakpoints for mobile, tablet, and desktop
-- Username display in navigation bar (replaces email)
-- Enhanced TypeScript type safety (removed all `any` types)
-- Better error handling with proper type guards
+- Jaeger tracing for backend and Traefik (native Jaeger in Traefik v2.10)
+- Prometheus scraping for Traefik + backend metrics
+- Admin tools to wipe audit and error logs
+- Stage day tracking (workday vs home) with dashboard progress
+- Week overview always shows 7 days without horizontal scroll
+- Planning delete now removes remote items
 
 ### Changed
-- **Breaking**: All styling is now mobile-first (base styles for mobile, enhanced for larger screens)
-- Navigation bar shows username instead of email
-- App title shortened to "Planner" in navigation
-- Improved responsive breakpoints:
-  - Mobile: < 600px
-  - Tablet: 600px - 960px  
-  - Desktop: ≥ 960px
-- TypeScript target updated to ES2021 (for `replaceAll` support)
-- CI workflow improved with separate cache steps for backend and frontend
+- Traefik configuration updated for Prometheus + Jaeger dashboards
+- Navigation layout updated to GitHub-style tabs with icons
+- Workspace seeding now keeps only admin by default
 
 ### Fixed
-- All TypeScript compilation errors
-- All ESLint errors (95 errors fixed)
-- React hooks exhaustive-deps warnings
-- Control character regex issues
-- Dexie query type issues
-- PDF.js type compatibility issues
+- Fixed planning tag sync so stage day type persists
+- Removed obsolete migration plan doc from repo
 
 ### Technical
 - Updated theme with mobile-first typography and component overrides

@@ -154,6 +154,7 @@ function DayColumn({
   onSelect,
   initialScrollM,
   timeFormat,
+  showHourLabels,
 }: {
   ymd: string
   label: string
@@ -161,9 +162,10 @@ function DayColumn({
   onSelect: (it: WeekTimelineItem) => void
   initialScrollM: number
   timeFormat?: '24h' | '12h'
+  showHourLabels: boolean
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `day-${ymd}` })
-  const labelWidth = 38
+  const labelWidth = showHourLabels ? 36 : 10
   const layout = computeOverlapLayout(items)
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
@@ -194,7 +196,7 @@ function DayColumn({
         bgcolor: isOver ? 'action.hover' : 'background.paper',
       }}
     >
-      <Typography sx={{ fontWeight: 900, mb: 1 }} noWrap>
+      <Typography sx={{ fontWeight: 900, mb: 1, fontSize: '0.85rem' }} noWrap>
         {label}
       </Typography>
       <Box ref={scrollRef} sx={{ height: 640, overflowY: 'auto', position: 'relative' }}>
@@ -215,9 +217,11 @@ function DayColumn({
               <Box key={h} sx={{ position: 'absolute', left: 0, right: 0, top }}>
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
                   <Box sx={{ width: labelWidth, pr: 0.5 }}>
-                    <Typography variant="caption" color="text.secondary">
-                      {hourLabel}
-                    </Typography>
+                    {showHourLabels && (
+                      <Typography variant="caption" color="text.secondary">
+                        {hourLabel}
+                      </Typography>
+                    )}
                   </Box>
                   <Box sx={{ flex: 1, height: 1, bgcolor: 'divider' }} />
                 </Box>
@@ -297,12 +301,12 @@ export function WeekTimeline({
         sx={{
           display: 'grid',
           gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
-          gap: 1.5,
+          gap: 1,
           overflowX: 'hidden',
           pb: 1,
         }}
       >
-        {weekDays.map((d) => (
+        {weekDays.map((d, idx) => (
           <DayColumn
             key={d.ymd}
             ymd={d.ymd}
@@ -311,6 +315,7 @@ export function WeekTimeline({
             onSelect={onSelect}
             initialScrollM={initialScrollM ?? 8 * 60}
             timeFormat={timeFormat}
+            showHourLabels={idx === 0}
           />
         ))}
       </Box>

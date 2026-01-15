@@ -100,10 +100,23 @@ function Section({
 
 export function DashboardPage() {
   const nav = useNavigate()
-  const { weekStart, timeFormat } = useSettings()
+  const { weekStart, timeFormat, stageStart, stageEnd, stageHolidaysJson } = useSettings()
   const { user } = useAuth()
   const { currentWorkspace } = useWorkspace()
   const userId = user?.id
+  const holidaySet = useMemo(() => {
+    try {
+      const arr = JSON.parse(stageHolidaysJson || '[]') as string[]
+      return new Set((arr || []).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)))
+    } catch {
+      return new Set<string>()
+    }
+  }, [stageHolidaysJson])
+
+  const isWithinStage = (d: string) => {
+    if (!stageStart || !stageEnd) return true
+    return d >= stageStart && d <= stageEnd
+  }
   const items = useLiveQuery(async () => {
     if (!userId) return []
     // Filter by workspace if available, otherwise fallback to ownerUserId
@@ -134,14 +147,27 @@ export function DashboardPage() {
     const stageWorkDates = new Set<string>()
     for (const it of all) {
       if (getStageType(it.tagsJson) === 'work') {
-        stageWorkDates.add(it.date)
+        if (isWithinStage(it.date) && !holidaySet.has(it.date)) {
+          stageWorkDates.add(it.date)
+        }
       }
     }
     const plannedStageDays = stageWorkDates.size
     const workedStageDays = Array.from(stageWorkDates).filter((d) => d <= today).length
 
-    return { todayItems, weekItems, highPriority, overdue, inProgress, plannedStageDays, workedStageDays }
-  }, [items, today, weekStartYmd, weekEnd])
+    const excludedStageDays = Array.from(holidaySet).filter((d) => isWithinStage(d)).length
+
+    return {
+      todayItems,
+      weekItems,
+      highPriority,
+      overdue,
+      inProgress,
+      plannedStageDays,
+      workedStageDays,
+      excludedStageDays,
+    }
+  }, [items, today, weekStartYmd, weekEnd, stageStart, stageEnd, holidaySet])
 
   return (
     <Box sx={{ display: 'grid', gap: { xs: 1.5, sm: 2 } }}>
@@ -179,8 +205,12 @@ export function DashboardPage() {
               size="small"
               label={`Nog te plannen: ${Math.max(0, 60 - computed.plannedStageDays)}`}
             />
+            {computed.excludedStageDays > 0 && (
+              <Chip size="small" label={`Uitgesloten: ${computed.excludedStageDays}`} />
+            )}
           </Stack>
           <Typography variant="body2" color="text.secondary">
+            Periode: {stageStart || 'onbekend'} – {stageEnd || 'onbekend'} •
             Gebruik planning met “Stage werkdag” om de 60 dagen bij te houden.
           </Typography>
         </Stack>

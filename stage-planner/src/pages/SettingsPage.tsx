@@ -30,6 +30,12 @@ export function SettingsPage() {
     setCompactMode,
     reduceMotion,
     setReduceMotion,
+    stageStart,
+    setStageStart,
+    stageEnd,
+    setStageEnd,
+    stageHolidaysJson,
+    setStageHolidaysJson,
     autoExtractTextOnOpen,
     setAutoExtractTextOnOpen,
     ocrLanguage,
@@ -45,6 +51,15 @@ export function SettingsPage() {
   } = useSettings()
   const { token, user, login } = useAuth()
 
+  const holidaysText = useMemo(() => {
+    try {
+      const arr = JSON.parse(stageHolidaysJson || '[]') as string[]
+      return (arr || []).join('\n')
+    } catch {
+      return ''
+    }
+  }, [stageHolidaysJson])
+
   const settingsSnapshot = useMemo(
     () => ({
       mode,
@@ -59,6 +74,9 @@ export function SettingsPage() {
       workdayEnd,
       compactMode,
       reduceMotion,
+      stageStart,
+      stageEnd,
+      stageHolidaysJson,
       autoExtractTextOnOpen,
       ocrLanguage,
       errorLoggingEnabled,
@@ -303,6 +321,40 @@ export function SettingsPage() {
               fullWidth
             />
           </Stack>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+            <TextField
+              label="Stage start"
+              type="date"
+              value={stageStart}
+              onChange={(e) => setStageStart(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              fullWidth
+            />
+            <TextField
+              label="Stage einde"
+              type="date"
+              value={stageEnd}
+              onChange={(e) => setStageEnd(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              fullWidth
+            />
+          </Stack>
+          <TextField
+            label="Vakantie / feestdagen (1 per lijn)"
+            value={holidaysText}
+            onChange={(e) => {
+              const raw = e.target.value
+              const dates = raw
+                .split('\n')
+                .map((d) => d.trim())
+                .filter(Boolean)
+                .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+              setStageHolidaysJson(JSON.stringify(dates))
+            }}
+            helperText="Gebruik formaat YYYY-MM-DD. Deze dagen tellen nooit als werkdag."
+            minRows={3}
+            multiline
+          />
           <TextField
             label="Standaard taakduur (minuten)"
             type="number"

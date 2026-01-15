@@ -11,12 +11,12 @@ function transportFromEnv() {
   const port = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 587
   const secure = process.env.SMTP_SECURE === 'true'
 
-  if (!host || !user || !pass) return null
+  if (!host) return null
   return nodemailer.createTransport({
     host,
     port,
     secure,
-    auth: { user, pass },
+    auth: user && pass ? { user, pass } : undefined,
   })
 }
 

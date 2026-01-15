@@ -22,6 +22,11 @@ type SettingsState = {
   compactMode: boolean
   reduceMotion: boolean
 
+  // Stage planning
+  stageStart: string // YYYY-MM-DD
+  stageEnd: string // YYYY-MM-DD
+  stageHolidaysJson: string // string[]
+
   // Files / preview
   autoExtractTextOnOpen: boolean
   ocrLanguage: string
@@ -49,6 +54,10 @@ type Settings = SettingsState & {
   setWorkdayEnd: (v: string) => void
   setCompactMode: (v: boolean) => void
   setReduceMotion: (v: boolean) => void
+
+  setStageStart: (v: string) => void
+  setStageEnd: (v: string) => void
+  setStageHolidaysJson: (v: string) => void
 
   setAutoExtractTextOnOpen: (v: boolean) => void
   setOcrLanguage: (v: string) => void
@@ -85,6 +94,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [defaultStatus, setDefaultStatus] = useState<PlanningStatus>('todo')
   const [compactMode, setCompactMode] = useState(false)
   const [reduceMotion, setReduceMotion] = useState(false)
+  const [stageStart, setStageStart] = useState('2026-02-02')
+  const [stageEnd, setStageEnd] = useState('2026-05-31')
+  const [stageHolidaysJson, setStageHolidaysJson] = useState('[]')
   const [autoExtractTextOnOpen, setAutoExtractTextOnOpen] = useState(false)
   const [ocrLanguage, setOcrLanguage] = useState('eng')
   const [errorLoggingEnabled, setErrorLoggingEnabled] = useState(true)
@@ -123,6 +135,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       if (typeof parsed?.compactMode === 'boolean') setCompactMode(parsed.compactMode)
       if (typeof parsed?.reduceMotion === 'boolean') setReduceMotion(parsed.reduceMotion)
 
+      if (typeof parsed?.stageStart === 'string') setStageStart(parsed.stageStart)
+      if (typeof parsed?.stageEnd === 'string') setStageEnd(parsed.stageEnd)
+      if (typeof parsed?.stageHolidaysJson === 'string') setStageHolidaysJson(parsed.stageHolidaysJson)
+
       if (typeof parsed?.autoExtractTextOnOpen === 'boolean') setAutoExtractTextOnOpen(parsed.autoExtractTextOnOpen)
       if (typeof parsed?.ocrLanguage === 'string' && parsed.ocrLanguage.trim()) setOcrLanguage(parsed.ocrLanguage.trim())
 
@@ -151,6 +167,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         workdayEnd,
         compactMode,
         reduceMotion,
+        stageStart,
+        stageEnd,
+        stageHolidaysJson,
         autoExtractTextOnOpen,
         ocrLanguage,
         errorLoggingEnabled,
@@ -175,6 +194,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     workdayEnd,
     compactMode,
     reduceMotion,
+    stageStart,
+    stageEnd,
+    stageHolidaysJson,
     autoExtractTextOnOpen,
     ocrLanguage,
     errorLoggingEnabled,
@@ -211,6 +233,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       reduceMotion,
       setReduceMotion,
 
+      stageStart,
+      setStageStart,
+      stageEnd,
+      setStageEnd,
+      stageHolidaysJson,
+      setStageHolidaysJson,
+
       autoExtractTextOnOpen,
       setAutoExtractTextOnOpen,
       ocrLanguage,
@@ -239,6 +268,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       workdayEnd,
       compactMode,
       reduceMotion,
+      stageStart,
+      stageEnd,
+      stageHolidaysJson,
       autoExtractTextOnOpen,
       ocrLanguage,
       errorLoggingEnabled,

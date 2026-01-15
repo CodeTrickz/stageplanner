@@ -1,10 +1,16 @@
 # Stage Planner (React)
 
-Kleine stage-app met 3 tabbladen:
+Frontend voor Stage Planner met meerdere tabbladen:
 
+- **Dashboard**: overzicht van vandaag/week/taken + stage voortgang.
 - **Planning**: dagplanning met tijdsindeling (items opslaan, bewerken, verwijderen).
+- **Week**: weekoverzicht met 7 dagen.
+- **Taken**: taken-overzicht met filters.
 - **Bestanden**: uploaden + downloaden (opslag in **IndexedDB** in je browser).
 - **Notities / mail**: tekst + bijlages (kies bijlages uit Bestanden), opslaan, export als **.txt** of **.zip**.
+- **Team**: workspaces en ledenbeheer.
+- **Instellingen**: gebruikersinstellingen (planning, stageperiode, holidays, thema).
+- **Admin**: beheer en logs (alleen admin).
 
 ## Starten (Windows)
 

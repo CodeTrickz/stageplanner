@@ -53,7 +53,7 @@ export function TeamPage() {
   const [inviteRole, setInviteRole] = useState<WorkspaceRole>('MENTOR')
   const [inviting, setInviting] = useState(false)
 
-  const isOwner = currentWorkspace?.role === 'STUDENT' && currentWorkspace?.ownerId === user?.id
+  const canManageTeam = currentWorkspace?.role === 'STUDENT'
 
   const loadMembers = useCallback(async () => {
     if (!currentWorkspace) {
@@ -65,7 +65,7 @@ export function TeamPage() {
       setLoading(true)
       const [membersList, invitationsList] = await Promise.all([
         api.listMembers(currentWorkspace.id),
-        isOwner ? api.listInvitations(currentWorkspace.id) : Promise.resolve([]),
+        canManageTeam ? api.listInvitations(currentWorkspace.id) : Promise.resolve([]),
       ])
       setMembers(membersList)
       setInvitations(invitationsList)
@@ -74,7 +74,7 @@ export function TeamPage() {
     } finally {
       setLoading(false)
     }
-  }, [currentWorkspace?.id, api, isOwner])
+  }, [currentWorkspace?.id, api, canManageTeam])
 
   useEffect(() => {
     void loadMembers()
@@ -136,7 +136,7 @@ export function TeamPage() {
         <Typography variant="h4" component="h1">
           Team: {currentWorkspace.name}
         </Typography>
-        {isOwner && (
+        {canManageTeam && (
           <Button
             variant="contained"
             startIcon={<PersonAddIcon />}
@@ -198,7 +198,7 @@ export function TeamPage() {
               <ListItem
                 key={member.userId}
                 secondaryAction={
-                  isOwner && member.userId !== user?.id ? (
+                  canManageTeam && member.userId !== user?.id ? (
                     <Stack direction="row" spacing={1}>
                       <Select
                         value={member.role}

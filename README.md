@@ -23,7 +23,7 @@ Stage Planner is een full-stack applicatie voor dagplanning, bestandsbeheer en n
 1. **Clone de repository**
    ```bash
    git clone <repository-url>
-   cd "stage app"
+   cd stageplanner
    ```
 
 2. **Backend opstarten**
@@ -44,7 +44,7 @@ Stage Planner is een full-stack applicatie voor dagplanning, bestandsbeheer en n
 
 ### Docker Deployment
 
-Zie [README.docker.md](./README.docker.md) voor instructies om de applicatie met Docker Compose te draaien.
+Zie [README.docker.md](./README.docker.md) voor instructies om de applicatie met Docker Compose (Traefik + Prometheus + Jaeger) te draaien.
 
 ## 📁 Project Structuur
 
@@ -75,6 +75,8 @@ Kopieer `backend/env.example` naar `backend/env.local` en pas aan:
 - `JWT_SECRET`: Lange random string voor JWT tokens
 - `APP_URL`: Public URL van de applicatie (voor verificatie emails)
 - `CORS_ORIGIN`: CORS origin (moet matchen met frontend URL)
+- `SMTP_HOST/SMTP_USER/SMTP_PASS`: SMTP configuratie voor echte emails
+- `MAIL_FROM`: Afzenderadres voor emails (optioneel, default = `SMTP_USER`)
 
 #### Admin Gebruiker
 
@@ -116,13 +118,17 @@ De frontend gebruikt environment variables via Vite. Zie `stage-planner/.env.exa
 
 ## 📝 Features
 
+- ✅ Dashboard met planning-overzichten
 - ✅ Dagplanning met tijdsindeling
+- ✅ Weekoverzicht (7 dagen)
+- ✅ Taken-overzicht met filters
 - ✅ Bestandsbeheer (upload/download via IndexedDB)
 - ✅ Notities met bijlagen
 - ✅ Export functionaliteit (.txt, .zip)
 - ✅ User authenticatie en verificatie
 - ✅ Responsive design (mobile-first)
 - ✅ Admin functionaliteit
+- ✅ Stage-dag tracking (werkdagen vs thuisdagen)
 
 ## 🤝 Bijdragen
 
@@ -139,6 +145,7 @@ Zie [SECURITY.md](./SECURITY.md) voor informatie over security vulnerabilities e
 ## 📚 Documentatie
 
 - [Docker Deployment](./README.docker.md)
+- [Traefik Setup](./README.traefik.md)
 - [Changelog](./CHANGELOG.md)
 - [Frontend README](./stage-planner/README.md)
 

@@ -73,6 +73,7 @@ docker-compose.yml.bak
 traefik/letsencrypt/acme.json
 traefik/letsencrypt/*.json
 !traefik/letsencrypt/.gitkeep
+traefik/otel-collector-config.yaml
 
 # --- Traefik Logs ---
 traefik/logs/*.log

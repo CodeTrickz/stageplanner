@@ -44,7 +44,6 @@ const tabs = [
   { label: 'Planning', to: '/planning', icon: <CalendarMonthIcon /> },
   { label: 'Week', to: '/week', icon: <CalendarMonthIcon /> },
   { label: 'Taken', to: '/taken', icon: <ListAltIcon /> },
-  { label: 'Gedeeld', to: '/shared', icon: <ListAltIcon /> },
   { label: 'Bestanden', to: '/bestanden', icon: <AttachFileIcon /> },
   { label: 'Notities / mail', to: '/notities', icon: <DescriptionIcon /> },
   { label: 'Team', to: '/team', icon: <PeopleIcon /> },

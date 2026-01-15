@@ -44,9 +44,31 @@ type Draft = {
   priority: PlanningItem['priority']
   status: PlanningItem['status']
   tags: string
+  stageType: 'none' | 'work' | 'home'
+}
+
+const STAGE_WORK_TAG = 'stage:work'
+const STAGE_HOME_TAG = 'stage:home'
+
+function stageTypeFromTags(tags: string[]) {
+  if (tags.includes(STAGE_WORK_TAG)) return 'work'
+  if (tags.includes(STAGE_HOME_TAG)) return 'home'
+  return 'none'
+}
+
+function stripStageTags(tags: string[]) {
+  return tags.filter((t) => t !== STAGE_WORK_TAG && t !== STAGE_HOME_TAG)
 }
 
 function toDraft(item: PlanningItem): Draft {
+  let tags: string[] = []
+  try {
+    tags = JSON.parse(item.tagsJson || '[]') as string[]
+  } catch {
+    tags = []
+  }
+  const stageType = stageTypeFromTags(tags)
+  const cleaned = stripStageTags(tags)
   return {
     id: item.id,
     date: item.date,
@@ -56,14 +78,8 @@ function toDraft(item: PlanningItem): Draft {
     notes: item.notes ?? '',
     priority: item.priority ?? 'medium',
     status: item.status ?? 'todo',
-    tags: (() => {
-      try {
-        const arr = JSON.parse(item.tagsJson || '[]') as string[]
-        return (arr || []).join(', ')
-      } catch {
-        return ''
-      }
-    })(),
+    tags: (cleaned || []).join(', '),
+    stageType,
   }
 }
 
@@ -87,6 +103,7 @@ export function PlanningPage() {
     priority: defaultPriority ?? 'medium',
     status: defaultStatus ?? 'todo',
     tags: '',
+    stageType: 'none',
   }))
 
   // Sync items from backend when workspace changes or periodically
@@ -230,9 +247,6 @@ export function PlanningPage() {
     return { noteId: note, fileKeys }
   }, [draft.id, ownerUserId])
 
-  const [shareEmail, setShareEmail] = useState('')
-  const [sharePerm, setSharePerm] = useState<'read' | 'write'>('read')
-  const [shareStatus, setShareStatus] = useState<string | null>(null)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -262,6 +276,7 @@ export function PlanningPage() {
       priority: defaultPriority ?? 'medium',
       status: defaultStatus ?? 'todo',
       tags: '',
+      stageType: 'none',
     })
     setOpen(true)
   }
@@ -271,11 +286,14 @@ export function PlanningPage() {
     if (err) return
 
     const now = Date.now()
-    const tags = draft.tags
+    const baseTags = draft.tags
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean)
       .slice(0, 20)
+    const tags = stripStageTags(baseTags)
+    if (draft.stageType === 'work') tags.unshift(STAGE_WORK_TAG)
+    if (draft.stageType === 'home') tags.unshift(STAGE_HOME_TAG)
     const basePayload = {
       date: draft.date,
       start: draft.start,
@@ -323,6 +341,7 @@ export function PlanningPage() {
               notes: rec.notes ?? null,
               priority: rec.priority,
               status: rec.status,
+              tagsJson: rec.tagsJson,
               workspaceId: currentWorkspace.id,
             }),
           })
@@ -336,6 +355,24 @@ export function PlanningPage() {
   }
 
   async function remove(id: number) {
+    const rec = await db.planning.get(id)
+    if (!rec) return
+
+    // Delete from backend if remoteId exists
+    if (rec.remoteId && token) {
+      try {
+        await apiFetch(`/planning/${rec.remoteId}`, {
+          method: 'DELETE',
+          token,
+        })
+      } catch (e) {
+        // Silently fail - deletion will be retried on next sync
+        if (import.meta.env.DEV) {
+          console.error('Failed to delete planning item from backend:', e)
+        }
+      }
+    }
+
     await db.planning.delete(id)
   }
 
@@ -442,12 +479,22 @@ export function PlanningPage() {
               {(() => {
                 try {
                   const tags = JSON.parse(it.tagsJson || '[]') as string[]
-                  return tags?.length ? (
+                  const stageType = stageTypeFromTags(tags)
+                  const visibleTags = stripStageTags(tags)
+                  return stageType !== 'none' || visibleTags.length ? (
                     <Stack direction="row" spacing={1} sx={{ mt: 1 }} useFlexGap flexWrap="wrap">
-                      {tags.slice(0, 6).map((t) => (
+                      {stageType !== 'none' && (
+                        <Chip
+                          size="small"
+                          label={stageType === 'work' ? 'Stage werkdag' : 'Thuis project'}
+                          color={stageType === 'work' ? 'primary' : 'default'}
+                          variant="outlined"
+                        />
+                      )}
+                      {visibleTags.slice(0, 6).map((t) => (
                         <Chip key={t} size="small" label={t} variant="outlined" />
                       ))}
-                      {tags.length > 6 && <Chip size="small" label="…" variant="outlined" />}
+                      {visibleTags.length > 6 && <Chip size="small" label="…" variant="outlined" />}
                     </Stack>
                   ) : null
                 } catch {
@@ -579,68 +626,17 @@ export function PlanningPage() {
             onChange={(e) => setDraft((d) => ({ ...d, tags: e.target.value }))}
             helperText="Voorbeeld: School, Stage, Meeting"
           />
-          <Paper variant="outlined" sx={{ p: 1.5 }}>
-            <Stack spacing={1}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 900 }}>
-                Delen (cloud)
-              </Typography>
-              {!token && (
-                <Alert severity="info">Login vereist om te delen.</Alert>
-              )}
-              {token && (
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
-                  <TextField
-                    label="Email collega"
-                    value={shareEmail}
-                    onChange={(e) => setShareEmail(e.target.value)}
-                    fullWidth
-                  />
-                  <TextField
-                    select
-                    label="Rechten"
-                    value={sharePerm}
-                    onChange={(e) => setSharePerm(e.target.value as 'read' | 'write')}
-                    sx={{ minWidth: 140 }}
-                  >
-                    <MenuItem value="read">Read</MenuItem>
-                    <MenuItem value="write">Write</MenuItem>
-                  </TextField>
-                  <Button
-                    variant="contained"
-                    disabled={!draft.id || !shareEmail}
-                    onClick={async () => {
-                      if (!draft.id) return
-                      setShareStatus(null)
-                      const rec = await db.planning.get(draft.id)
-                      if (!rec?.remoteId) {
-                        setShareStatus('Eerst opslaan (cloud sync) om te kunnen delen.')
-                        return
-                      }
-                      try {
-                        await apiFetch('/shares', {
-                          method: 'POST',
-                          token,
-                          headers: { 'content-type': 'application/json' },
-                          body: JSON.stringify({
-                            resourceType: 'planning',
-                            resourceId: rec.remoteId,
-                            granteeEmail: shareEmail,
-                            permission: sharePerm,
-                          }),
-                        })
-                        setShareStatus('Gedeeld!')
-                      } catch (e) {
-                        setShareStatus(e instanceof Error ? e.message : 'share_failed')
-                      }
-                    }}
-                  >
-                    Delen
-                  </Button>
-                </Stack>
-              )}
-              {shareStatus && <Alert severity={shareStatus === 'Gedeeld!' ? 'success' : 'warning'}>{shareStatus}</Alert>}
-            </Stack>
-          </Paper>
+          <TextField
+            select
+            label="Stage dagtype"
+            value={draft.stageType}
+            onChange={(e) => setDraft((d) => ({ ...d, stageType: e.target.value as Draft['stageType'] }))}
+            helperText="Werkdag telt mee voor de 60 dagen. Thuis project telt niet mee."
+          >
+            <MenuItem value="none">(geen)</MenuItem>
+            <MenuItem value="work">Stage werkdag</MenuItem>
+            <MenuItem value="home">Thuis project (geen werkdag)</MenuItem>
+          </TextField>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <TextField
               select

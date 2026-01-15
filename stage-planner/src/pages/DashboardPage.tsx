@@ -9,6 +9,20 @@ import { useWorkspace } from '../hooks/useWorkspace'
 import { db, type PlanningItem } from '../db/db'
 import { addDays, formatTimeRange, startOfWeekMonday, startOfWeekSunday, yyyyMmDdLocal } from '../utils/date'
 
+const STAGE_WORK_TAG = 'stage:work'
+const STAGE_HOME_TAG = 'stage:home'
+
+function getStageType(tagsJson: string | undefined) {
+  try {
+    const tags = JSON.parse(tagsJson || '[]') as string[]
+    if (tags.includes(STAGE_WORK_TAG)) return 'work'
+    if (tags.includes(STAGE_HOME_TAG)) return 'home'
+    return 'none'
+  } catch {
+    return 'none'
+  }
+}
+
 function byDateTime(a: PlanningItem, b: PlanningItem) {
   return (a.date + a.start).localeCompare(b.date + b.start)
 }
@@ -117,7 +131,16 @@ export function DashboardPage() {
     const overdue = notDone.filter((it) => it.date < today).sort(byDateTime)
     const inProgress = all.filter((it) => it.status === 'in_progress').sort(byDateTime)
 
-    return { todayItems, weekItems, highPriority, overdue, inProgress }
+    const stageWorkDates = new Set<string>()
+    for (const it of all) {
+      if (getStageType(it.tagsJson) === 'work') {
+        stageWorkDates.add(it.date)
+      }
+    }
+    const plannedStageDays = stageWorkDates.size
+    const workedStageDays = Array.from(stageWorkDates).filter((d) => d <= today).length
+
+    return { todayItems, weekItems, highPriority, overdue, inProgress, plannedStageDays, workedStageDays }
   }, [items, today, weekStartYmd, weekEnd])
 
   return (
@@ -137,6 +160,31 @@ export function DashboardPage() {
       </Stack>
 
       {!items && <Alert severity="info">Laden…</Alert>}
+
+      <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 } }}>
+        <Stack direction="column" spacing={1}>
+          <Typography sx={{ fontWeight: 900 }}>Stage voortgang</Typography>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
+            <Chip
+              size="small"
+              color="primary"
+              label={`Ingepland: ${computed.plannedStageDays} / 60`}
+            />
+            <Chip
+              size="small"
+              color="success"
+              label={`Gewerkt: ${computed.workedStageDays} / 60`}
+            />
+            <Chip
+              size="small"
+              label={`Nog te plannen: ${Math.max(0, 60 - computed.plannedStageDays)}`}
+            />
+          </Stack>
+          <Typography variant="body2" color="text.secondary">
+            Gebruik planning met “Stage werkdag” om de 60 dagen bij te houden.
+          </Typography>
+        </Stack>
+      </Paper>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: '1fr', gap: { xs: 1.5, sm: 2 }, '@media (min-width:1200px)': { gridTemplateColumns: '1fr 1fr' } }}>
         <Section

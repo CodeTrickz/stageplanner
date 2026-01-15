@@ -187,9 +187,10 @@ function DayColumn({
       ref={setNodeRef}
       variant="outlined"
       sx={{
-        p: 1,
-        minWidth: 240,
+        p: 0.75,
+        minWidth: 0,
         flex: 1,
+        width: '100%',
         bgcolor: isOver ? 'action.hover' : 'background.paper',
       }}
     >
@@ -292,7 +293,15 @@ export function WeekTimeline({
 
   return (
     <DndContext onDragEnd={onDragEnd}>
-      <Box sx={{ display: 'flex', gap: 2, overflowX: 'auto', pb: 1 }}>
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+          gap: 1.5,
+          overflowX: 'hidden',
+          pb: 1,
+        }}
+      >
         {weekDays.map((d) => (
           <DayColumn
             key={d.ymd}

@@ -1717,6 +1717,16 @@ export const db = {
     return s.audit.length
   },
 
+  deleteAllAudit: (): void => {
+    if (sqliteDb) {
+      sqliteDb.prepare(`DELETE FROM audit_log`).run()
+    } else {
+      const s = readJson()
+      s.audit = []
+      writeJson(s)
+    }
+  },
+
   listAuditWithActorPaged: (limit = 200, offset = 0): DbAuditWithActor[] => {
     const safeLimit = Math.min(500, Math.max(1, Math.floor(limit)))
     const safeOffset = Math.max(0, Math.floor(offset))

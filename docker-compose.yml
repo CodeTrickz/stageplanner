@@ -1,6 +1,6 @@
 services:
   traefik:
-    image: traefik:v3.0
+    image: traefik:v2.10
     container_name: traefik
     command:
       - "--api.dashboard=true"
@@ -18,9 +18,12 @@ services:
       - "--metrics.prometheus=true"
       - "--metrics.prometheus.addEntryPointsLabels=true"
       - "--metrics.prometheus.addServicesLabels=true"
-      # Tracing (OpenTelemetry - disabled for now, can be enabled later)
-      # - "--tracing.otlp=true"
-      # - "--tracing.otlp.endpoint=jaeger:4317"
+      # Tracing (Jaeger native)
+      - "--tracing.jaeger=true"
+      - "--tracing.jaeger.collector.endpoint=http://jaeger:14268/api/traces?format=jaeger.thrift"
+      - "--tracing.jaeger.samplingType=const"
+      - "--tracing.jaeger.samplingParam=1.0"
+      - "--tracing.jaeger.propagation=jaeger"
       # Access logs
       - "--accesslog=true"
       - "--accesslog.filepath=/var/log/traefik/access.log"
@@ -81,6 +84,13 @@ services:
     container_name: jaeger
     environment:
       - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "6831:6831/udp"  # Jaeger agent UDP
+      - "6832:6832/udp"  # Jaeger agent UDP (legacy)
+      - "4317:4317"  # OTLP gRPC receiver (voor Traefik)
+      - "4318:4318"  # OTLP HTTP receiver (voor Traefik)
+      - "9411:9411"  # Zipkin HTTP
     labels:
       - "traefik.enable=true"
       - "traefik.http.services.jaeger.loadbalancer.server.port=16686"
@@ -99,6 +109,9 @@ services:
       - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env (use a long random string)}
       - APP_URL=${APP_URL:-https://${DOMAIN}}
       - CORS_ORIGIN=${CORS_ORIGIN:-https://${DOMAIN}}
+      - JAEGER_SERVICE_NAME=stageplanner-backend
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
     volumes:
       # Persist sqlite + logs on the host so you can inspect `backend/data/mails.log`, etc.
       - ./backend/data:/app/data

@@ -8,10 +8,12 @@ import SettingsIcon from '@mui/icons-material/Settings'
 import SearchIcon from '@mui/icons-material/Search'
 import MenuIcon from '@mui/icons-material/Menu'
 import PeopleIcon from '@mui/icons-material/People'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
 import {
   AppBar,
   Box,
   Button,
+  ButtonBase,
   Chip,
   Container,
   Divider,
@@ -21,8 +23,8 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
-  Tab,
-  Tabs,
+  Menu,
+  MenuItem,
   Toolbar,
   Typography,
   useMediaQuery,
@@ -64,8 +66,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Responsive breakpoints: xs (<600px), sm (600-960px), md (960-1280px), lg (1280px+)
   const isMobile = useMediaQuery(theme.breakpoints.down('sm')) // < 600px
   const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md')) // 600px - 960px
+  const isLargeDesktop = useMediaQuery(theme.breakpoints.up('lg')) // >= 1280px
   const isDesktop = useMediaQuery(theme.breakpoints.up('md')) // >= 960px
   const [drawerOpen, setDrawerOpen] = React.useState(false)
+  const [moreMenuAnchor, setMoreMenuAnchor] = React.useState<null | HTMLElement>(null)
   const online = useOnlineStatus()
   const backendOk = useBackendHealth(!!user && online)
   const [api, setApi] = React.useState<{ inFlight: number; lastSuccessAt: number | null; lastErrorAt: number | null }>({
@@ -90,15 +94,42 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const isAdmin = !!(user?.isAdmin)
   const visibleTabs = tabs.filter((t) => (!('adminOnly' in t && t.adminOnly) || isAdmin))
+  
+  // Split tabs into primary (always visible) and secondary (in "More" menu on small desktops)
+  // On small desktop: show first 5 tabs, rest in "More" menu
+  // On large desktop: show all tabs
+  const primaryTabs = isLargeDesktop ? visibleTabs : visibleTabs.slice(0, 5)
+  const secondaryTabs = isLargeDesktop ? [] : visibleTabs.slice(5)
+  const navButtonSx = (active: boolean) => ({
+    px: { md: 1, lg: 1.5 },
+    py: 0.5,
+    minHeight: 48,
+    borderRadius: 0,
+    fontSize: '0.8125rem',
+    fontWeight: active ? 600 : 500,
+    color: active ? 'text.primary' : 'text.secondary',
+    textTransform: 'none',
+    whiteSpace: 'nowrap',
+    borderBottom: '2px solid',
+    borderColor: active ? 'primary.main' : 'transparent',
+    '&:hover': {
+      color: 'text.primary',
+      borderColor: active ? 'primary.main' : 'divider',
+      backgroundColor: 'transparent',
+    },
+  })
 
   return (
     <Box sx={{ minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
-      <AppBar position="sticky" elevation={0} color="inherit">
+      <AppBar position="sticky" elevation={0} color="inherit" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
         <Toolbar 
           sx={{ 
             gap: { xs: 0.5, sm: 1, md: 1.5 }, 
             minHeight: { xs: 56, sm: 64 },
-            px: { xs: 1, sm: 1.5, md: 2 }
+            px: { xs: 1, sm: 1.5, md: 2 },
+            overflow: 'hidden',
+            flexWrap: { xs: 'wrap', md: 'nowrap' },
+            backgroundColor: 'background.paper'
           }}
         >
           {/* Mobile & Tablet: Menu button */}
@@ -114,46 +145,90 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </IconButton>
           )}
           
-          {/* App title - responsive sizing */}
+          {/* App title - GitHub style */}
           <Typography 
             variant="h6" 
             sx={{ 
-              fontWeight: 800, 
-              fontSize: { xs: '0.875rem', sm: '1rem', md: '1.125rem' },
-              flexShrink: 0
+              fontWeight: 600, 
+              fontSize: { xs: '0.875rem', sm: '1rem', md: '1rem' },
+              flexShrink: 0,
+              color: 'text.primary',
+              mr: { md: 1, lg: 2 }
             }}
           >
             Planner
           </Typography>
           
-          {/* Desktop: Full tabs with labels */}
+          {/* Desktop: GitHub-style navigation row */}
           {user && isDesktop && (
-            <Tabs
-              value={value}
-              textColor="primary"
-              indicatorColor="primary"
-              sx={{ 
-                ml: { md: 1, lg: 2 },
-                minHeight: { md: 48, lg: 64 },
-                '& .MuiTab-root': {
-                  minHeight: { md: 48, lg: 64 },
-                  fontSize: { md: '0.8125rem', lg: '0.875rem' },
-                  px: { md: 1.5, lg: 2 },
-                }
-              }}
-            >
-              {visibleTabs.map((t) => (
-                <Tab
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: { md: 1, lg: 2 } }}>
+              {primaryTabs.map((t) => (
+                <ButtonBase
                   key={t.to}
-                  value={t.to}
-                  label={t.label}
-                  icon={t.icon}
-                  iconPosition="start"
                   component={RouterLink}
                   to={t.to}
-                />
+                  sx={navButtonSx(value === t.to)}
+                  aria-label={t.label}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        color: 'inherit',
+                        '& svg': { fontSize: '1rem' },
+                      }}
+                    >
+                      {t.icon}
+                    </Box>
+                    <Typography component="span" sx={{ fontSize: '0.8125rem', fontWeight: 'inherit' }}>
+                      {t.label}
+                    </Typography>
+                  </Box>
+                </ButtonBase>
               ))}
-            </Tabs>
+              {secondaryTabs.length > 0 && (
+                <>
+                  <ButtonBase
+                    onClick={(e) => setMoreMenuAnchor(e.currentTarget)}
+                    sx={navButtonSx(false)}
+                    aria-label="More menu"
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <MoreVertIcon sx={{ fontSize: '1rem' }} />
+                      <Typography component="span" sx={{ fontSize: '0.8125rem', fontWeight: 500 }}>
+                        More
+                      </Typography>
+                    </Box>
+                  </ButtonBase>
+                  <Menu
+                    anchorEl={moreMenuAnchor}
+                    open={Boolean(moreMenuAnchor)}
+                    onClose={() => setMoreMenuAnchor(null)}
+                    anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+                    transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+                  >
+                    {secondaryTabs.map((t) => (
+                      <MenuItem
+                        key={t.to}
+                        selected={value === t.to}
+                        onClick={() => {
+                          setMoreMenuAnchor(null)
+                          nav(t.to)
+                        }}
+                        component={RouterLink}
+                        to={t.to}
+                      >
+                        <ListItemIcon sx={{ minWidth: 36 }}>
+                          {t.icon}
+                        </ListItemIcon>
+                        <ListItemText primary={t.label} />
+                      </MenuItem>
+                    ))}
+                  </Menu>
+                </>
+              )}
+            </Box>
           )}
           
           <Box sx={{ flex: 1 }} />

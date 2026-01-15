@@ -11,6 +11,13 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import { sendMail } from './mail'
 import fs from 'node:fs'
+import { Registry, Counter, Histogram, collectDefaultMetrics } from 'prom-client'
+import { FORMAT_HTTP_HEADERS, Span, SpanContext } from 'opentracing'
+
+// jaeger-client is a CommonJS module that exports an object with initTracer
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const jaegerClient = require('jaeger-client')
+const initTracer = jaegerClient.initTracer as (config: any, options?: any) => any
 
 class ApiError extends Error {
   status: number
@@ -124,6 +131,57 @@ function buildVerifyUrls(rawToken: string) {
 // Load env from backend/env.local if it exists (no dotfile needed)
 dotenv.config({ path: path.resolve(__dirname, '..', 'env.local') })
 
+// Prometheus metrics setup
+const register = new Registry()
+collectDefaultMetrics({ register })
+
+const httpRequestDuration = new Histogram({
+  name: 'http_request_duration_seconds',
+  help: 'Duration of HTTP requests in seconds',
+  labelNames: ['method', 'route', 'status'],
+  registers: [register],
+})
+
+const httpRequestTotal = new Counter({
+  name: 'http_requests_total',
+  help: 'Total number of HTTP requests',
+  labelNames: ['method', 'route', 'status'],
+  registers: [register],
+})
+
+// Jaeger tracing setup
+const jaegerAgentPort = process.env.JAEGER_AGENT_PORT
+  ? Number.parseInt(process.env.JAEGER_AGENT_PORT, 10)
+  : 6831
+
+const jaegerConfig = {
+  serviceName: process.env.JAEGER_SERVICE_NAME || 'stageplanner-backend',
+  sampler: {
+    type: 'const',
+    param: 1, // Sample all traces
+  },
+  reporter: {
+    agentHost: process.env.JAEGER_AGENT_HOST || 'jaeger',
+    agentPort: Number.isFinite(jaegerAgentPort) ? jaegerAgentPort : 6831,
+    logSpans: process.env.NODE_ENV !== 'production',
+  },
+}
+
+const tracer = initTracer(jaegerConfig, {
+  logger: {
+    info: (msg: string) => {
+      if (process.env.NODE_ENV !== 'production') {
+        // eslint-disable-next-line no-console
+        console.log(`[Jaeger] ${msg}`)
+      }
+    },
+    error: (msg: string) => {
+      // eslint-disable-next-line no-console
+      console.error(`[Jaeger] ${msg}`)
+    },
+  },
+})
+
 const app = express()
 // If behind reverse proxy (nginx), set TRUST_PROXY=1 (or a number) so req.ip is correct.
 if (process.env.TRUST_PROXY) {
@@ -169,7 +227,51 @@ app.use(
 app.use(express.json({ limit: '2mb' }))
 app.use(morgan('dev'))
 
+// Jaeger tracing middleware
+app.use((req, res, next) => {
+  const parentSpanContext = tracer.extract(FORMAT_HTTP_HEADERS, req.headers)
+  const span = tracer.startSpan(`${req.method} ${req.path}`, {
+    childOf: parentSpanContext as SpanContext | undefined,
+    tags: {
+      'http.method': req.method,
+      'http.url': req.url,
+      'http.route': req.route?.path || req.path,
+    },
+  })
+
+  // Store span in request for use in route handlers
+  ;(req as any).span = span
+
+  res.on('finish', () => {
+    span.setTag('http.status_code', res.statusCode)
+    if (res.statusCode >= 400) {
+      span.setTag('error', true)
+    }
+    span.finish()
+  })
+
+  next()
+})
+
+// Metrics middleware
+app.use((req, res, next) => {
+  const start = Date.now()
+  res.on('finish', () => {
+    const duration = (Date.now() - start) / 1000
+    const route = req.route?.path || req.path || 'unknown'
+    httpRequestDuration.observe({ method: req.method, route, status: res.statusCode }, duration)
+    httpRequestTotal.inc({ method: req.method, route, status: res.statusCode })
+  })
+  next()
+})
+
 app.get('/health', (_req, res) => res.json({ ok: true }))
+
+// Prometheus metrics endpoint
+app.get('/metrics', async (_req, res) => {
+  res.set('Content-Type', register.contentType)
+  res.end(await register.metrics())
+})
 
 const ERROR_LOG_PATH = path.resolve(process.cwd(), 'data', 'errors.ndjson')
 
@@ -283,6 +385,7 @@ function getDbUserOr401(req: express.Request, res: express.Response) {
 }
 
 // Seed default admin (dev/stage only - NEVER in production)
+// This function ensures only the admin user exists - removes all other users
 ;(function seedAdmin() {
   // Only seed in development or if explicitly enabled
   const isProduction = process.env.NODE_ENV === 'production'
@@ -296,26 +399,49 @@ function getDbUserOr401(req: express.Request, res: express.Response) {
   const password = process.env.ADMIN_PASSWORD || 'admin'
   const username = process.env.ADMIN_USERNAME || 'admin'
 
-  const existing = db.findUserByEmail(email)
-  if (existing) return
+  // Remove all users except the admin user
+  const allUsers = db.listUsers()
+  const adminUser = db.findUserByEmail(email)
+  const adminUserId = adminUser?.id
 
-  const passwordHash = bcrypt.hashSync(password, 10)
-  const tokenHash = crypto.createHash('sha256').update('seeded').digest('hex')
-  const expiresAt = Date.now() + 1000 * 60 * 60 * 24 * 365
+  for (const user of allUsers) {
+    // Skip the admin user if it exists
+    if (adminUserId && user.id === adminUserId) {
+      continue
+    }
+    // Delete all other users
+    db.deleteUser(user.id)
+  }
 
-  db.createUser({
-    email,
-    username,
-    firstName: 'Admin',
-    lastName: 'User',
-    passwordHash,
-    emailVerificationTokenHash: tokenHash,
-    emailVerificationExpiresAt: expiresAt,
-    isAdmin: true,
-    emailVerified: true,
-  })
-  // eslint-disable-next-line no-console
-  console.log(`Seeded admin user: ${email} / ${password}`)
+  // Create admin user if it doesn't exist
+  if (!adminUser) {
+    const passwordHash = bcrypt.hashSync(password, 10)
+    const tokenHash = crypto.createHash('sha256').update('seeded').digest('hex')
+    const expiresAt = Date.now() + 1000 * 60 * 60 * 24 * 365
+
+    db.createUser({
+      email,
+      username,
+      firstName: 'Admin',
+      lastName: 'User',
+      passwordHash,
+      emailVerificationTokenHash: tokenHash,
+      emailVerificationExpiresAt: expiresAt,
+      isAdmin: true,
+      emailVerified: true,
+    })
+    // eslint-disable-next-line no-console
+    console.log(`Seeded admin user: ${email} / ${password}`)
+  } else {
+    // Ensure existing admin user has correct properties
+    db.updateUser(adminUser.id, {
+      isAdmin: 1,
+      emailVerified: 1,
+    })
+    // eslint-disable-next-line no-console
+    console.log(`Admin user already exists: ${email}`)
+  }
+
   if (isProduction) {
     // eslint-disable-next-line no-console
     console.warn('WARNING: Admin user seeded in production! This should only be done during initial setup.')
@@ -1391,6 +1517,12 @@ app.get('/admin/audit/download', requireAuth, requireAdmin, (req, res) => {
   return res.send('\uFEFF' + lines.join('\r\n')) // BOM for Excel
 })
 
+app.delete('/admin/audit', requireAuth, requireAdmin, (req, res) => {
+  db.deleteAllAudit()
+  audit(req, 'admin.audit.wipe', 'audit', 'all', {})
+  return res.json({ ok: true })
+})
+
 function readLastNdjson(filePath: string, limit: number) {
   try {
     if (!fs.existsSync(filePath)) return []
@@ -1454,6 +1586,18 @@ app.get('/admin/errors/download', requireAuth, requireAdmin, (req, res) => {
   res.setHeader('content-disposition', `attachment; filename="backend-errors-${stamp}.ndjson"`)
   if (!fs.existsSync(ERROR_LOG_PATH)) return res.send('')
   return res.send(fs.readFileSync(ERROR_LOG_PATH, 'utf-8'))
+})
+
+app.delete('/admin/errors', requireAuth, requireAdmin, (req, res) => {
+  try {
+    if (fs.existsSync(ERROR_LOG_PATH)) {
+      fs.writeFileSync(ERROR_LOG_PATH, '', 'utf-8')
+    }
+    audit(req, 'admin.errors.wipe', 'errors', 'backend', {})
+    return res.json({ ok: true })
+  } catch (err) {
+    return res.status(500).json({ error: 'wipe_failed', message: err instanceof Error ? err.message : String(err) })
+  }
 })
 
 // (oude per-user planning endpoints verwijderd; zie boven voor shared-aware endpoints)

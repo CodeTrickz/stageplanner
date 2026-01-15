@@ -294,11 +294,52 @@ export function AdminPage() {
   }
 
   async function clearFrontendErrors() {
+    if (!confirm('Alle frontend errors wissen? Deze actie kan niet ongedaan worden gemaakt.')) return
     try {
-      if (!frontendErrors?.length) return
-      await db.errors.bulkDelete(frontendErrors.map((e) => e.id!).filter(Boolean))
-    } catch {
-      // ignore
+      await db.errors.clear()
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'clear_failed')
+    }
+  }
+
+  async function clearAuditLog() {
+    if (!token) return
+    if (!confirm('Alle audit logs wissen? Deze actie kan niet ongedaan worden gemaakt.')) return
+    setError(null)
+    setBusy(true)
+    try {
+      const res = await fetch(`${API}/admin/audit`, {
+        method: 'DELETE',
+        headers: { authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || 'wipe_failed')
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'wipe_failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function clearBackendErrors() {
+    if (!token) return
+    if (!confirm('Alle backend errors wissen? Deze actie kan niet ongedaan worden gemaakt.')) return
+    setError(null)
+    setBusy(true)
+    try {
+      const res = await fetch(`${API}/admin/errors`, {
+        method: 'DELETE',
+        headers: { authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || 'wipe_failed')
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'wipe_failed')
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -354,6 +395,15 @@ export function AdminPage() {
             >
               Download JSON
             </Button>
+            <Button
+              variant="outlined"
+              color="error"
+              startIcon={<DeleteOutlineIcon />}
+              disabled={busy || (auditTotal != null ? auditTotal === 0 : false)}
+              onClick={() => void clearAuditLog()}
+            >
+              Wipe All
+            </Button>
           </Stack>
         </Stack>
         <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mb: 1 }}>
@@ -407,8 +457,14 @@ export function AdminPage() {
             <Button variant="outlined" startIcon={<DownloadIcon />} disabled={busy} onClick={() => void downloadFrontendErrorsJson()}>
               Download JSON
             </Button>
-            <Button variant="outlined" color="error" disabled={busy || !frontendErrors?.length} onClick={() => void clearFrontendErrors()}>
-              Clear
+            <Button
+              variant="outlined"
+              color="error"
+              startIcon={<DeleteOutlineIcon />}
+              disabled={busy || (frontendErrTotal != null ? frontendErrTotal === 0 : false)}
+              onClick={() => void clearFrontendErrors()}
+            >
+              Wipe All
             </Button>
           </Stack>
         </Stack>
@@ -484,6 +540,15 @@ export function AdminPage() {
             </Button>
             <Button variant="outlined" startIcon={<DownloadIcon />} disabled={busy} onClick={() => void downloadBackendErrors('json')}>
               Download JSON
+            </Button>
+            <Button
+              variant="outlined"
+              color="error"
+              startIcon={<DeleteOutlineIcon />}
+              disabled={busy || (backendErrTotal != null ? backendErrTotal === 0 : false)}
+              onClick={() => void clearBackendErrors()}
+            >
+              Wipe All
             </Button>
           </Stack>
         </Stack>

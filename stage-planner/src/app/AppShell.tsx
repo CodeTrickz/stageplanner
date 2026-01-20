@@ -231,6 +231,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           )}
           
           <Box sx={{ flex: 1 }} />
+
+          {user && (
+            <Box sx={{ display: { xs: 'none', sm: 'block' }, mr: { sm: 1, md: 1.5 } }}>
+              <WorkspaceSelector variant="toolbar" />
+            </Box>
+          )}
           
           {/* Status chip - hidden on mobile */}
           <Box sx={{ display: { xs: 'none', sm: 'block' } }}>{statusChip}</Box>

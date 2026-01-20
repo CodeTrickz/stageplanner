@@ -5,7 +5,7 @@ import helmet from 'helmet'
 import morgan from 'morgan'
 import bcrypt from 'bcryptjs'
 import { ZodError, z } from 'zod'
-import { getUser, requireAuth, signAccessToken } from './auth'
+import { getUser, getUserFromToken, requireAuth, signAccessToken } from './auth'
 import { db, type DbPlanningItem, type DbNote, type DbFile } from './db'
 import path from 'node:path'
 import crypto from 'node:crypto'
@@ -183,6 +183,22 @@ const tracer = initTracer(jaegerConfig, {
 })
 
 const app = express()
+type SseClient = {
+  res: express.Response
+  workspaceId: string
+}
+
+const sseClients = new Set<SseClient>()
+
+function broadcastWorkspace(workspaceId: string, type: string) {
+  const data = JSON.stringify({ type, workspaceId, ts: Date.now() })
+  for (const c of sseClients) {
+    if (c.workspaceId === workspaceId) {
+      c.res.write(`event: update\n`)
+      c.res.write(`data: ${data}\n\n`)
+    }
+  }
+}
 // If behind reverse proxy (nginx), set TRUST_PROXY=1 (or a number) so req.ip is correct.
 if (process.env.TRUST_PROXY) {
   const raw = process.env.TRUST_PROXY.trim()
@@ -358,16 +374,16 @@ function canCreateInWorkspace(userId: string, workspaceId: string): boolean {
   return role === 'STUDENT'
 }
 
-function canEditInWorkspace(userId: string, workspaceId: string, resourceOwnerId: string): boolean {
+function canEditInWorkspace(userId: string, workspaceId: string, _resourceOwnerId: string): boolean {
   const role = getWorkspaceRole(userId, workspaceId)
   if (!role) return false
-  // STUDENT can edit own items, MENTOR/BEGELEIDER can only add feedback
-  return role === 'STUDENT' && resourceOwnerId === userId
+  // Any STUDENT can edit items within the workspace
+  return role === 'STUDENT'
 }
 
-function canDeleteInWorkspace(userId: string, workspaceId: string, resourceOwnerId: string): boolean {
+function canDeleteInWorkspace(userId: string, workspaceId: string, _resourceOwnerId: string): boolean {
   const role = getWorkspaceRole(userId, workspaceId)
-  return role === 'STUDENT' && resourceOwnerId === userId
+  return role === 'STUDENT'
 }
 
 function getDbUserOr401(req: express.Request, res: express.Response) {
@@ -709,6 +725,39 @@ app.post('/me/password', requireAuth, rlPasswordChange, asyncHandler(async (req,
   return res.json({ ok: true })
 }))
 
+// SSE: workspace updates (push layer)
+app.get('/events', asyncHandler(async (req, res) => {
+  const token = String(req.query.token || '')
+  const u = getUserFromToken(token)
+  if (!u) return res.status(401).json({ error: 'unauthorized' })
+  const workspaceId = String(req.query.workspaceId || '')
+  if (!workspaceId) return res.status(400).json({ error: 'workspace_id_required' })
+  const role = db.getMembershipRole(u.id, workspaceId)
+  if (!role) return res.status(403).json({ error: 'not_member' })
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  })
+  res.write(`event: ready\n`)
+  res.write(`data: ${JSON.stringify({ ok: true, workspaceId })}\n\n`)
+
+  const client = { res, workspaceId }
+  sseClients.add(client)
+
+  const keepAlive = setInterval(() => {
+    res.write(`event: ping\n`)
+    res.write(`data: {}\n\n`)
+  }, 25000)
+
+  req.on('close', () => {
+    clearInterval(keepAlive)
+    sseClients.delete(client)
+  })
+}))
+
 // Client-side settings changes: log to audit
 const clientSettingsAuditSchema = z.object({
   changes: z.record(z.any()).default({}),
@@ -760,6 +809,85 @@ app.post('/audit/files', requireAuth, (req, res) => {
   })
   return res.json({ ok: true })
 })
+
+// File meta (folders/labels) - workspace aware
+const fileMetaListQuerySchema = z.object({
+  workspaceId: z.string(),
+})
+
+const fileMetaUpsertSchema = z.object({
+  workspaceId: z.string(),
+  groupKey: z.string().min(1).max(400),
+  folder: z.string().max(200),
+  labelsJson: z.string().max(4000),
+})
+
+app.get('/file-meta', requireAuth, asyncHandler(async (req, res) => {
+  const u = getDbUserOr401(req, res)
+  if (!u) return
+  const { workspaceId } = parseQuery(req, fileMetaListQuerySchema)
+  const role = db.getMembershipRole(u.id, workspaceId)
+  if (!role) return res.status(403).json({ error: 'not_member' })
+  const items = db.listFileMetaForWorkspace(workspaceId)
+  return res.json({ items, workspaceId })
+}))
+
+app.post('/file-meta', requireAuth, asyncHandler(async (req, res) => {
+  const u = getDbUserOr401(req, res)
+  if (!u) return
+  const parsed = fileMetaUpsertSchema.safeParse(req.body)
+  if (!parsed.success) return res.status(400).json({ error: 'invalid_input' })
+  const d = parsed.data
+  const role = db.getMembershipRole(u.id, d.workspaceId)
+  if (!role) return res.status(403).json({ error: 'not_member' })
+  if (!canCreateInWorkspace(u.id, d.workspaceId)) return res.status(403).json({ error: 'only_students_can_create' })
+  const item = db.upsertFileMeta(d.workspaceId, d.groupKey, d.folder, d.labelsJson)
+  broadcastWorkspace(d.workspaceId, 'file_meta')
+  return res.json({ item, workspaceId: d.workspaceId })
+}))
+
+// Entity links (planning<->note<->fileGroup) - workspace aware
+const linksListQuerySchema = z.object({
+  workspaceId: z.string(),
+  fromType: z.enum(['planning', 'note']),
+  fromId: z.string().min(1),
+})
+
+const linksUpsertSchema = z.object({
+  workspaceId: z.string(),
+  fromType: z.enum(['planning', 'note']),
+  fromId: z.string().min(1),
+  links: z.array(
+    z.object({
+      toType: z.enum(['fileGroup', 'note', 'planning']),
+      toKey: z.string().min(1),
+    }),
+  ),
+})
+
+app.get('/links', requireAuth, asyncHandler(async (req, res) => {
+  const u = getDbUserOr401(req, res)
+  if (!u) return
+  const { workspaceId, fromType, fromId } = parseQuery(req, linksListQuerySchema)
+  const role = db.getMembershipRole(u.id, workspaceId)
+  if (!role) return res.status(403).json({ error: 'not_member' })
+  const items = db.listLinksForItem(workspaceId, fromType, fromId)
+  return res.json({ items, workspaceId })
+}))
+
+app.post('/links', requireAuth, asyncHandler(async (req, res) => {
+  const u = getDbUserOr401(req, res)
+  if (!u) return
+  const parsed = linksUpsertSchema.safeParse(req.body)
+  if (!parsed.success) return res.status(400).json({ error: 'invalid_input' })
+  const d = parsed.data
+  const role = db.getMembershipRole(u.id, d.workspaceId)
+  if (!role) return res.status(403).json({ error: 'not_member' })
+  if (!canCreateInWorkspace(u.id, d.workspaceId)) return res.status(403).json({ error: 'only_students_can_create' })
+  const items = db.replaceLinksForItem(d.workspaceId, d.fromType, d.fromId, d.links)
+  broadcastWorkspace(d.workspaceId, 'links')
+  return res.json({ items, workspaceId: d.workspaceId })
+}))
 
 // Files (cloud) - workspace aware
 const filesListQuerySchema = z.object({
@@ -897,6 +1025,7 @@ app.post('/files', requireAuth, asyncHandler(async (req, res) => {
   })
 
   audit(req, 'file.upload', 'file', file.id, { workspaceId: finalWorkspaceId, name: file.name, size: file.size })
+  if (file.workspaceId) broadcastWorkspace(file.workspaceId, 'files')
   return res.json({
     file: {
       id: file.id,
@@ -936,6 +1065,7 @@ app.delete('/files/:id', requireAuth, asyncHandler(async (req, res) => {
   if (!deleted) return res.status(404).json({ error: 'not_found' })
 
   audit(req, 'file.delete', 'file', fileId, { workspaceId: file.workspaceId, name: file.name })
+  if (file.workspaceId) broadcastWorkspace(file.workspaceId, 'files')
   return res.json({ ok: true })
 }))
 
@@ -1087,6 +1217,7 @@ app.post('/notes', requireAuth, asyncHandler(async (req, res) => {
 
   const note = db.upsertNote(u.id, { id: d.id, subject: d.subject, body: d.body, groupId: workspaceId })
   audit(req, d.id ? 'note.update' : 'note.create', 'note', note.id, { workspaceId, subject: note.subject })
+  broadcastWorkspace(workspaceId, 'notes')
   return res.json({ note, workspaceId })
 }))
 
@@ -1106,6 +1237,7 @@ app.delete('/notes/:id', requireAuth, (req, res) => {
   const ok = db.deleteNote(u.id, id)
   if (!ok) return res.status(404).json({ error: 'not_found' })
   audit(req, 'note.delete', 'note', id, { workspaceId: n.groupId })
+  if (n.groupId) broadcastWorkspace(n.groupId, 'notes')
   return res.json({ ok: true })
 })
 
@@ -1252,6 +1384,7 @@ app.post('/planning', requireAuth, asyncHandler(async (req, res) => {
       status: d.status,
     })
     audit(req, 'planning.update', 'planning', item.id, { workspaceId, date: item.date })
+    broadcastWorkspace(workspaceId, 'planning')
     return res.json({ item, workspaceId })
   }
 
@@ -1272,6 +1405,7 @@ app.post('/planning', requireAuth, asyncHandler(async (req, res) => {
     status: d.status,
   })
   audit(req, 'planning.create', 'planning', item.id, { workspaceId, date: item.date })
+  broadcastWorkspace(workspaceId, 'planning')
   return res.json({ item, workspaceId })
 }))
 
@@ -1291,6 +1425,7 @@ app.delete('/planning/:id', requireAuth, asyncHandler(async (req, res) => {
   const ok = db.deletePlanning(u.id, id)
   if (!ok) return res.status(404).json({ error: 'not_found' })
   audit(req, 'planning.delete', 'planning', id, { workspaceId: p.groupId })
+  if (p.groupId) broadcastWorkspace(p.groupId, 'planning')
   return res.json({ ok: true })
 }))
 

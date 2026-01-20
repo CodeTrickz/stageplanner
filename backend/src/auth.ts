@@ -38,4 +38,14 @@ export function getUser(req: Request) {
   return (req as any).user as { id: string; email: string; isAdmin: boolean } | undefined
 }
 
+export function getUserFromToken(token: string | null | undefined) {
+  if (!token) return null
+  try {
+    const decoded = jwt.verify(token, getJwtSecret()) as JwtPayload
+    return { id: decoded.sub, email: decoded.email, isAdmin: !!decoded.isAdmin }
+  } catch {
+    return null
+  }
+}
+
 

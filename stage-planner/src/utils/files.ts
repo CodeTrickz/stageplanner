@@ -86,4 +86,17 @@ export function formatBytes(bytes: number) {
   return `${size.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`
 }
 
+export async function fetchFileBlob(fileId: string, token: string): Promise<Blob> {
+  const API_BASE = import.meta.env.VITE_API_BASE || (import.meta.env.PROD ? '/api' : 'http://localhost:3001')
+  const res = await fetch(`${API_BASE}/files/${fileId}`, {
+    headers: {
+      authorization: `Bearer ${token}`,
+    },
+  })
+  if (!res.ok) {
+    throw new Error(`file_download_failed_${res.status}`)
+  }
+  return res.blob()
+}
+
 

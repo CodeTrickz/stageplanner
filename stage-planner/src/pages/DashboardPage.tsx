@@ -1,12 +1,25 @@
 import LaunchIcon from '@mui/icons-material/Launch'
 import { Alert, Box, Button, Chip, Divider, IconButton, Paper, Stack, Typography } from '@mui/material'
-import { useLiveQuery } from 'dexie-react-hooks'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSettings } from '../app/settings'
-import { useAuth } from '../auth/auth'
+import { apiFetch, useApiToken } from '../api/client'
 import { useWorkspace } from '../hooks/useWorkspace'
-import { db, type PlanningItem } from '../db/db'
+import { useWorkspaceEvents } from '../hooks/useWorkspaceEvents'
+type ServerPlanningItem = {
+  id: string
+  userId?: string
+  date: string
+  start: string
+  end: string
+  title: string
+  notes?: string | null
+  priority: 'low' | 'medium' | 'high'
+  status: 'todo' | 'in_progress' | 'done'
+  tagsJson?: string
+  createdAt?: number
+  updatedAt?: number
+}
 import { addDays, formatTimeRange, startOfWeekMonday, startOfWeekSunday, yyyyMmDdLocal } from '../utils/date'
 
 const STAGE_WORK_TAG = 'stage:work'
@@ -23,7 +36,7 @@ function getStageType(tagsJson: string | undefined) {
   }
 }
 
-function byDateTime(a: PlanningItem, b: PlanningItem) {
+function byDateTime(a: ServerPlanningItem, b: ServerPlanningItem) {
   return (a.date + a.start).localeCompare(b.date + b.start)
 }
 
@@ -35,9 +48,9 @@ function Section({
   timeFormat,
 }: {
   title: string
-  items: PlanningItem[]
+  items: ServerPlanningItem[]
   onOpenAll: () => void
-  onOpenItem: (it: PlanningItem) => void
+  onOpenItem: (it: ServerPlanningItem) => void
   timeFormat?: '24h' | '12h'
 }) {
   const top = items.slice(0, 8)
@@ -101,9 +114,14 @@ function Section({
 export function DashboardPage() {
   const nav = useNavigate()
   const { weekStart, timeFormat, stageStart, stageEnd, stageHolidaysJson } = useSettings()
-  const { user } = useAuth()
+  const token = useApiToken()
   const { currentWorkspace } = useWorkspace()
-  const userId = user?.id
+  const [items, setItems] = useState<ServerPlanningItem[]>([])
+  const [refreshTick, setRefreshTick] = useState(0)
+
+  useWorkspaceEvents((evt) => {
+    if (evt.type === 'planning') setRefreshTick((v) => v + 1)
+  })
   const holidaySet = useMemo(() => {
     try {
       const arr = JSON.parse(stageHolidaysJson || '[]') as string[]
@@ -117,17 +135,36 @@ export function DashboardPage() {
     if (!stageStart || !stageEnd) return true
     return d >= stageStart && d <= stageEnd
   }
-  const items = useLiveQuery(async () => {
-    if (!userId) return []
-    // Filter by workspace if available, otherwise fallback to ownerUserId
-    if (currentWorkspace?.id) {
-      const list = await db.planning.where('workspaceId').equals(currentWorkspace.id).toArray()
-      return list.sort(byDateTime)
+
+  useEffect(() => {
+    if (!token || !currentWorkspace?.id) return
+    const workspaceId = String(currentWorkspace.id)
+    const url = `/planning?workspaceId=${encodeURIComponent(workspaceId)}`
+    let cancelled = false
+    async function sync() {
+      try {
+        const result = await apiFetch(url, { token: token || undefined })
+        if (cancelled) return
+        const remoteItems = (result.items || []) as ServerPlanningItem[]
+        setItems(remoteItems)
+      } catch {
+        // ignore (offline etc)
+      }
     }
-    // Fallback to ownerUserId for backward compatibility
-    const list = await db.planning.where('ownerUserId').equals(userId).toArray()
-    return list.sort(byDateTime)
-  }, [userId, currentWorkspace?.id])
+    void sync()
+    const interval = setInterval(() => {
+      if (!cancelled) void sync()
+    }, 30000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [token, currentWorkspace?.id, refreshTick])
+  const itemsSorted = useMemo(() => {
+    const list = items.slice()
+    list.sort(byDateTime)
+    return list
+  }, [items])
 
   const today = yyyyMmDdLocal(new Date())
   const start = weekStart === 'sunday' ? startOfWeekSunday(new Date()) : startOfWeekMonday(new Date())
@@ -135,7 +172,7 @@ export function DashboardPage() {
   const weekEnd = yyyyMmDdLocal(addDays(start, 6))
 
   const computed = useMemo(() => {
-    const all = items ?? []
+    const all = itemsSorted
     const notDone = all.filter((it) => it.status !== 'done')
 
     const todayItems = all.filter((it) => it.date === today).sort(byDateTime)
@@ -167,7 +204,7 @@ export function DashboardPage() {
       workedStageDays,
       excludedStageDays,
     }
-  }, [items, today, weekStartYmd, weekEnd, stageStart, stageEnd, holidaySet])
+  }, [itemsSorted, today, weekStartYmd, weekEnd, stageStart, stageEnd, holidaySet])
 
   return (
     <Box sx={{ display: 'grid', gap: { xs: 1.5, sm: 2 } }}>
@@ -185,7 +222,7 @@ export function DashboardPage() {
         </Button>
       </Stack>
 
-      {!items && <Alert severity="info">Laden…</Alert>}
+      {itemsSorted.length === 0 && <Alert severity="info">Geen items.</Alert>}
 
       <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 } }}>
         <Stack direction="column" spacing={1}>

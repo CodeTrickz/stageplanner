@@ -15,12 +15,13 @@ import {
 } from '@mui/material'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { db } from '../db/db'
-import { useAuth } from '../auth/auth'
+import { apiFetch, useApiToken } from '../api/client'
+import { useWorkspace } from '../hooks/useWorkspace'
+import { useWorkspaceEvents } from '../hooks/useWorkspaceEvents'
 
 type Result =
-  | { kind: 'planning'; id: number; primary: string; secondary: string; date: string }
-  | { kind: 'note'; id: number; primary: string; secondary: string }
+  | { kind: 'planning'; id: string; primary: string; secondary: string; date: string }
+  | { kind: 'note'; id: string; primary: string; secondary: string }
   | { kind: 'file'; groupKey: string; primary: string; secondary: string }
 
 function stripHtml(html: string) {
@@ -33,11 +34,17 @@ function stripHtml(html: string) {
 
 export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const nav = useNavigate()
-  const { user } = useAuth()
+  const { currentWorkspace } = useWorkspace()
   const theme = useTheme()
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
-  const userId = user?.id
-  const ownerUserId = userId || null
+  const token = useApiToken()
+  const [refreshTick, setRefreshTick] = useState(0)
+
+  useWorkspaceEvents((evt) => {
+    if (['planning', 'notes', 'files', 'file_meta'].includes(evt.type)) {
+      setRefreshTick((v) => v + 1)
+    }
+  })
   const [q, setQ] = useState('')
   const [results, setResults] = useState<Result[] | null>(null)
 
@@ -57,13 +64,27 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
         setResults([])
         return
       }
-      if (!ownerUserId) {
+      if (!token || !currentWorkspace?.id) {
         setResults([])
         return
       }
       const out: Result[] = []
-
-      const planning = userId ? await db.planning.where('ownerUserId').equals(userId).toArray() : await db.planning.toArray()
+      const workspaceId = String(currentWorkspace.id)
+      const [planningRes, notesRes, filesRes, metaRes] = await Promise.all([
+        apiFetch(`/planning?workspaceId=${encodeURIComponent(workspaceId)}`, { token: token || undefined }),
+        apiFetch(`/notes?workspaceId=${encodeURIComponent(workspaceId)}`, { token: token || undefined }),
+        apiFetch(`/files?workspaceId=${encodeURIComponent(workspaceId)}`, { token: token || undefined }),
+        apiFetch(`/file-meta?workspaceId=${encodeURIComponent(workspaceId)}`, { token: token || undefined }),
+      ])
+      const planning = (planningRes.items || []) as Array<{
+        id: string
+        date: string
+        start: string
+        end: string
+        title: string
+        notes?: string | null
+        tagsJson?: string
+      }>
       for (const it of planning) {
         const tags = (() => {
           try {
@@ -73,7 +94,7 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
           }
         })()
         const hay = `${it.title} ${it.notes ?? ''} ${it.date} ${it.start}-${it.end} ${tags}`.toLowerCase()
-        if (hay.includes(qq) && it.id != null) {
+        if (hay.includes(qq) && it.id) {
           out.push({
             kind: 'planning',
             id: it.id,
@@ -83,12 +104,11 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
           })
         }
       }
-
-      const notes = await db.notes.where('ownerUserId').equals(ownerUserId).toArray()
+      const notes = (notesRes.notes || []) as Array<{ id: string; subject: string; body: string; updatedAt: number }>
       for (const n of notes) {
         const bodyTxt = stripHtml(n.body || '')
         const hay = `${n.subject} ${bodyTxt}`.toLowerCase()
-        if (hay.includes(qq) && n.id != null) {
+        if (hay.includes(qq) && n.id) {
           out.push({
             kind: 'note',
             id: n.id,
@@ -97,10 +117,9 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
           })
         }
       }
-
       // files by group
-      const files = await db.files.where('ownerUserId').equals(ownerUserId).toArray()
-      const metas = await db.fileMeta.where('ownerUserId').equals(ownerUserId).toArray()
+      const files = (filesRes.files || []) as Array<{ groupKey: string; name: string; type: string }>
+      const metas = (metaRes.items || []) as Array<{ groupKey: string; folder: string; labelsJson?: string }>
       const metaByKey = new Map(metas.map((m) => [m.groupKey, m] as const))
       const seen = new Set<string>()
       for (const f of files) {
@@ -125,7 +144,7 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
       cancelled = true
       clearTimeout(t)
     }
-  }, [open, qq, ownerUserId, userId])
+  }, [open, qq, token, currentWorkspace?.id, refreshTick])
 
   function go(r: Result) {
     onClose()

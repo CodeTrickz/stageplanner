@@ -8,6 +8,7 @@ export type Workspace = {
   ownerId?: string | null
   createdAt: number
   role?: WorkspaceRole // User's role in this workspace
+  isPersonal?: boolean
 }
 
 export type WorkspaceMember = {

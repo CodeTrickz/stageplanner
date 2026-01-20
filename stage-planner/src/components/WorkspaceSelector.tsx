@@ -18,7 +18,7 @@ const roleLabels: Record<string, string> = {
   BEGELEIDER: 'Begeleider',
 }
 
-export function WorkspaceSelector() {
+export function WorkspaceSelector({ variant = 'drawer' }: { variant?: 'drawer' | 'toolbar' } = {}) {
   const { currentWorkspace, workspaces, setCurrentWorkspace, loading, error } = useWorkspace()
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
   const open = Boolean(anchorEl)
@@ -38,7 +38,7 @@ export function WorkspaceSelector() {
 
   if (loading) {
     return (
-      <Box sx={{ p: { xs: 1.5, sm: 2 } }}>
+      <Box sx={{ p: variant === 'drawer' ? { xs: 1.5, sm: 2 } : 0 }}>
         <Typography variant="body2" color="text.secondary">
           Workspaces laden...
         </Typography>
@@ -48,7 +48,7 @@ export function WorkspaceSelector() {
 
   if (error) {
     return (
-      <Box sx={{ p: { xs: 1.5, sm: 2 } }}>
+      <Box sx={{ p: variant === 'drawer' ? { xs: 1.5, sm: 2 } : 0 }}>
         <Typography variant="body2" color="error">
           Fout: {error}
         </Typography>
@@ -58,7 +58,7 @@ export function WorkspaceSelector() {
 
   if (workspaces.length === 0) {
     return (
-      <Box sx={{ p: { xs: 1.5, sm: 2 } }}>
+      <Box sx={{ p: variant === 'drawer' ? { xs: 1.5, sm: 2 } : 0 }}>
         <Typography variant="body2" color="text.secondary">
           Geen workspaces beschikbaar
         </Typography>
@@ -68,23 +68,25 @@ export function WorkspaceSelector() {
 
   return (
     <>
-      <Box sx={{ mb: 1 }}>
-        <Typography 
-          variant="caption" 
-          color="text.secondary" 
-          sx={{ 
-            fontSize: { xs: '0.7rem', sm: '0.75rem' },
-            fontWeight: 600,
-            textTransform: 'uppercase',
-            letterSpacing: 0.5,
-            px: { xs: 1.5, sm: 2 },
-            pb: 0.5,
-            display: 'block'
-          }}
-        >
-          Workspace
-        </Typography>
-      </Box>
+      {variant === 'drawer' && (
+        <Box sx={{ mb: 1 }}>
+          <Typography 
+            variant="caption" 
+            color="text.secondary" 
+            sx={{ 
+              fontSize: { xs: '0.7rem', sm: '0.75rem' },
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: 0.5,
+              px: { xs: 1.5, sm: 2 },
+              pb: 0.5,
+              display: 'block'
+            }}
+          >
+            Workspace
+          </Typography>
+        </Box>
+      )}
       <Button
         onClick={handleClick}
         startIcon={<WorkspacesIcon />}
@@ -92,8 +94,8 @@ export function WorkspaceSelector() {
           textTransform: 'none',
           color: 'text.primary',
           justifyContent: 'flex-start',
-          px: { xs: 1.5, sm: 2 },
-          py: { xs: 1, sm: 1.25 },
+          px: variant === 'drawer' ? { xs: 1.5, sm: 2 } : 1,
+          py: variant === 'drawer' ? { xs: 1, sm: 1.25 } : 0.5,
           border: '1px solid',
           borderColor: 'divider',
           borderRadius: 1,
@@ -102,13 +104,14 @@ export function WorkspaceSelector() {
             bgcolor: 'action.hover',
           },
         }}
-        fullWidth
+        size={variant === 'drawer' ? 'medium' : 'small'}
+        fullWidth={variant === 'drawer'}
       >
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', flex: 1, minWidth: 0 }}>
           <Typography
             variant="body2"
             sx={{
-              fontSize: { xs: '0.75rem', sm: '0.8125rem' },
+              fontSize: variant === 'drawer' ? { xs: '0.75rem', sm: '0.8125rem' } : '0.75rem',
               fontWeight: 600,
               overflow: 'hidden',
               textOverflow: 'ellipsis',
@@ -118,14 +121,14 @@ export function WorkspaceSelector() {
           >
             {currentWorkspace?.name || 'Geen workspace'}
           </Typography>
-          {currentWorkspace?.role && (
+          {variant === 'drawer' && currentWorkspace?.role && (
             <Chip
               label={roleLabels[currentWorkspace.role] || currentWorkspace.role}
               size="small"
               sx={{ mt: 0.5, height: 20, fontSize: '0.7rem' }}
             />
           )}
-          {workspaces.length > 1 && (
+          {variant === 'drawer' && workspaces.length > 1 && (
             <Typography 
               variant="caption" 
               color="text.secondary" 

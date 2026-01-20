@@ -7,7 +7,7 @@ export type StoredFile = {
   name: string
   type: string
   size: number
-  data: Blob
+  data?: Blob | null
   createdAt: number
   groupKey: string
   version: number

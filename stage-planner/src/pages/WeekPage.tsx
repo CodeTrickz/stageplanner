@@ -1,18 +1,37 @@
 import { Alert, Box, Button, Paper, Stack, Typography } from '@mui/material'
-import { useLiveQuery } from 'dexie-react-hooks'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { WeekTimeline } from '../components/WeekTimeline'
 import { useSettings } from '../app/settings'
-import { useAuth } from '../auth/auth'
-import { db, type PlanningItem } from '../db/db'
+import { apiFetch, useApiToken } from '../api/client'
 import { addDays, dateFromYmdLocal, startOfWeekMonday, startOfWeekSunday, yyyyMmDdLocal } from '../utils/date'
+import { useWorkspace } from '../hooks/useWorkspace'
+import { useWorkspaceEvents } from '../hooks/useWorkspaceEvents'
+
+type ServerPlanningItem = {
+  id: string
+  userId?: string
+  date: string
+  start: string
+  end: string
+  title: string
+  notes?: string | null
+  priority: 'low' | 'medium' | 'high'
+  status: 'todo' | 'in_progress' | 'done'
+  tagsJson?: string
+}
 
 export function WeekPage() {
   const [anchor, setAnchor] = useState(() => yyyyMmDdLocal(new Date()))
   const { weekStart, workdayStart, weekViewMode, timeFormat } = useSettings()
-  const { user } = useAuth()
-  const userId = user?.id
+  const token = useApiToken()
+  const { currentWorkspace } = useWorkspace()
+  const [items, setItems] = useState<ServerPlanningItem[]>([])
+  const [refreshTick, setRefreshTick] = useState(0)
+
+  useWorkspaceEvents((evt) => {
+    if (evt.type === 'planning') setRefreshTick((v) => v + 1)
+  })
 
   const weekStartYmd = useMemo(() => {
     const base = dateFromYmdLocal(anchor)
@@ -23,11 +42,34 @@ export function WeekPage() {
   const dayCount = weekViewMode === 'workweek' ? 5 : 7
   const weekEnd = useMemo(() => yyyyMmDdLocal(addDays(dateFromYmdLocal(weekStartYmd), dayCount - 1)), [weekStartYmd, dayCount])
 
-  const items = useLiveQuery(async () => {
-    // lexicographic works for YYYY-MM-DD
-    const list = await db.planning.where('[ownerUserId+date]').between([userId, weekStartYmd], [userId, weekEnd], true, true).toArray()
-    return list
-  }, [userId, weekStartYmd, weekEnd], [])
+  useEffect(() => {
+    if (!token || !currentWorkspace?.id) return
+    const workspaceId = String(currentWorkspace.id)
+    const url = `/planning?workspaceId=${encodeURIComponent(workspaceId)}`
+    let cancelled = false
+    async function sync() {
+      try {
+        const result = await apiFetch(url, { token: token || undefined })
+        if (cancelled) return
+        const remoteItems = (result.items || []) as ServerPlanningItem[]
+        setItems(remoteItems)
+      } catch {
+        // ignore (offline etc)
+      }
+    }
+    void sync()
+    const interval = setInterval(() => {
+      if (!cancelled) void sync()
+    }, 30000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [token, currentWorkspace?.id, refreshTick])
+
+  const itemsForWeek = useMemo(() => {
+    return items.filter((it) => it.date >= weekStartYmd && it.date <= weekEnd)
+  }, [items, weekStartYmd, weekEnd])
 
   const days = useMemo(() => {
     const start = dateFromYmdLocal(weekStartYmd)
@@ -60,17 +102,15 @@ export function WeekPage() {
 
       <WeekTimeline
         weekDays={days}
-        items={(items ?? [])
-          .filter((x) => typeof x.id === 'number')
-          .map((it) => ({
-            id: it.id as number,
-            date: it.date,
-            start: it.start,
-            end: it.end,
-            title: it.title,
-            priority: it.priority ?? 'medium',
-            status: it.status ?? 'todo',
-          }))}
+        items={itemsForWeek.map((it) => ({
+          id: it.id,
+          date: it.date,
+          start: it.start,
+          end: it.end,
+          title: it.title,
+          priority: it.priority ?? 'medium',
+          status: it.status ?? 'todo',
+        }))}
         initialScrollM={(() => {
           const [hh, mm] = String(workdayStart || '08:00')
             .split(':')
@@ -82,7 +122,30 @@ export function WeekPage() {
           window.location.href = `/planning?date=${encodeURIComponent(it.date)}`
         }}
         onMove={async (it, next) => {
-          await db.planning.update(Number(it.id), { ...next, updatedAt: Date.now() } as Partial<PlanningItem>)
+          const itemId = String(it.id)
+          if (!token || !currentWorkspace?.id) return
+          const current = items.find((p) => p.id === itemId)
+          if (!current) return
+          setItems((prev) => prev.map((p) => (p.id === itemId ? { ...p, ...next } : p)))
+          try {
+            await apiFetch(`/planning?workspaceId=${encodeURIComponent(currentWorkspace.id)}`, {
+              method: 'POST',
+              token: token || undefined,
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                id: itemId,
+                date: next.date,
+                start: next.start,
+                end: next.end,
+                title: current.title,
+                priority: current.priority,
+                status: current.status,
+                workspaceId: currentWorkspace.id,
+              }),
+            })
+          } catch {
+            // ignore (offline etc)
+          }
         }}
         timeFormat={timeFormat}
       />

@@ -11,41 +11,83 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
-import { useLiveQuery } from 'dexie-react-hooks'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../auth/auth'
-import { db, type PlanningItem } from '../db/db'
+import { apiFetch, useApiToken } from '../api/client'
+import { useWorkspace } from '../hooks/useWorkspace'
+import { useWorkspaceEvents } from '../hooks/useWorkspaceEvents'
+
+type ServerPlanningItem = {
+  id: string
+  userId?: string
+  date: string
+  start: string
+  end: string
+  title: string
+  notes?: string | null
+  priority: 'low' | 'medium' | 'high'
+  status: 'todo' | 'in_progress' | 'done'
+  tagsJson?: string
+}
 
 export function TasksOverviewPage() {
   const navigate = useNavigate()
-  const { user } = useAuth()
-  const userId = user?.id
+  const token = useApiToken()
+  const { currentWorkspace } = useWorkspace()
   const [q, setQ] = useState('')
-  const [priority, setPriority] = useState<'all' | PlanningItem['priority']>('all')
-  const [status, setStatus] = useState<'all' | PlanningItem['status']>('all')
+  const [priority, setPriority] = useState<'all' | ServerPlanningItem['priority']>('all')
+  const [status, setStatus] = useState<'all' | ServerPlanningItem['status']>('all')
+  const [items, setItems] = useState<ServerPlanningItem[]>([])
+  const [refreshTick, setRefreshTick] = useState(0)
 
-  const items = useLiveQuery(async () => {
-    if (!userId) return []
-    const list = await db.planning.where('ownerUserId').equals(userId).toArray()
-    // date asc, time asc
-    return list.sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start))
-  }, [userId])
+  useWorkspaceEvents((evt) => {
+    if (evt.type === 'planning') setRefreshTick((v) => v + 1)
+  })
+
+  useEffect(() => {
+    if (!token || !currentWorkspace?.id) return
+    const workspaceId = String(currentWorkspace.id)
+    const url = `/planning?workspaceId=${encodeURIComponent(workspaceId)}`
+    let cancelled = false
+    async function sync() {
+      try {
+        const result = await apiFetch(url, { token: token || undefined })
+        if (cancelled) return
+        const remoteItems = (result.items || []) as ServerPlanningItem[]
+        setItems(remoteItems)
+      } catch {
+        // ignore (offline etc)
+      }
+    }
+    void sync()
+    const interval = setInterval(() => {
+      if (!cancelled) void sync()
+    }, 30000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [token, currentWorkspace?.id, refreshTick])
+
+  const itemsSorted = useMemo(() => {
+    const list = items.slice()
+    list.sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start))
+    return list
+  }, [items])
 
   const filtered = useMemo(() => {
-    if (!items) return []
     const qq = q.trim().toLowerCase()
-    return items.filter((it) => {
+    return itemsSorted.filter((it) => {
       if (priority !== 'all' && it.priority !== priority) return false
       if (status !== 'all' && it.status !== status) return false
       if (!qq) return true
       const hay = `${it.title} ${it.notes ?? ''} ${it.date} ${it.start}-${it.end}`.toLowerCase()
       return hay.includes(qq)
     })
-  }, [items, q, priority, status])
+  }, [itemsSorted, q, priority, status])
 
   const grouped = useMemo(() => {
-    const map = new Map<string, PlanningItem[]>()
+    const map = new Map<string, ServerPlanningItem[]>()
     for (const it of filtered) {
       const arr = map.get(it.date) ?? []
       arr.push(it)
@@ -81,7 +123,7 @@ export function TasksOverviewPage() {
             select
             label="Prioriteit"
             value={priority}
-            onChange={(e) => setPriority(e.target.value as 'all' | PlanningItem['priority'])}
+            onChange={(e) => setPriority(e.target.value as 'all' | ServerPlanningItem['priority'])}
             size="small"
             sx={{ width: { xs: '100%', md: 'auto' }, minWidth: { xs: '100%', md: 160 } }}
           >
@@ -95,7 +137,7 @@ export function TasksOverviewPage() {
             select
             label="Status"
             value={status}
-            onChange={(e) => setStatus(e.target.value as 'all' | PlanningItem['status'])}
+            onChange={(e) => setStatus(e.target.value as 'all' | ServerPlanningItem['status'])}
             size="small"
             sx={{ width: { xs: '100%', md: 'auto' }, minWidth: { xs: '100%', md: 180 } }}
           >

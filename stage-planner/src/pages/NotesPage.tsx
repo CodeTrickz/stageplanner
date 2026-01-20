@@ -22,18 +22,71 @@ import {
   FormControlLabel,
   Typography,
 } from '@mui/material'
-import { useLiveQuery } from 'dexie-react-hooks'
 import JSZip from 'jszip'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { FilePreviewDialog } from '../components/FilePreviewDialog'
 import { RichTextEditor } from '../components/RichTextEditor'
 import { NotePreviewDialog } from '../components/NotePreviewDialog'
-import { db, type NoteDraft, type StoredFile } from '../db/db'
-import { formatBytes } from '../utils/files'
+import type { StoredFile } from '../db/db'
+import { fetchFileBlob, formatBytes } from '../utils/files'
 import { apiFetch, useApiToken } from '../api/client'
-import { useAuth } from '../auth/auth'
 import { useWorkspace } from '../hooks/useWorkspace'
+import { useWorkspaceEvents } from '../hooks/useWorkspaceEvents'
+
+type ServerNote = {
+  id: string
+  subject: string
+  body: string
+  createdAt: number
+  updatedAt: number
+}
+
+type ServerPlanningItem = {
+  id: string
+  date: string
+  start: string
+  end: string
+  title: string
+}
+
+type ServerFile = {
+  id: string
+  userId: string
+  workspaceId: string | null
+  name: string
+  type: string
+  size: number
+  groupKey: string
+  version: number
+  createdAt: number
+  updatedAt: number
+}
+
+type ServerFileMeta = {
+  groupKey: string
+  folder: string
+  labelsJson: string
+  createdAt: number
+  updatedAt: number
+}
+
+type DraftNote = {
+  id?: string
+  subject: string
+  body: string
+  attachmentGroupKeys: string[]
+  updatedAt?: number
+}
+
+type FileGroup = {
+  groupKey: string
+  name: string
+  type: string
+  size: number
+  latest: ServerFile
+  folder: string
+}
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -56,21 +109,34 @@ function safeFilename(name: string, fallback: string) {
     .slice(0, 80)
 }
 
+function toStoredFile(file: ServerFile): StoredFile {
+  return {
+    name: file.name,
+    type: file.type,
+    size: file.size,
+    data: new Blob(),
+    groupKey: file.groupKey,
+    version: file.version,
+    createdAt: file.createdAt,
+    remoteId: file.id,
+  }
+}
+
 export function NotesPage() {
   const token = useApiToken()
-  const { user } = useAuth()
   const { currentWorkspace } = useWorkspace()
-  const ownerUserId = user?.id || null
   const [params] = useSearchParams()
-  const [selectedId, setSelectedId] = useState<number | null>(null)
-  const [draft, setDraft] = useState<NoteDraft>(() => ({
-    ownerUserId: ownerUserId || '__local__',
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [draft, setDraft] = useState<DraftNote>(() => ({
     subject: '',
     body: '',
-    attachmentFileIds: [],
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    attachmentGroupKeys: [],
   }))
+  const [notes, setNotes] = useState<ServerNote[]>([])
+  const [files, setFiles] = useState<ServerFile[]>([])
+  const [metas, setMetas] = useState<ServerFileMeta[]>([])
+  const [planning, setPlanning] = useState<ServerPlanningItem[]>([])
+  const [noteLinks, setNoteLinks] = useState<{ planningId: string; fileKeys: string[] }>({ planningId: '', fileKeys: [] })
   const [status, setStatus] = useState<string | null>(null)
   const [preview, setPreview] = useState<StoredFile | null>(null)
   const [notePreviewOpen, setNotePreviewOpen] = useState(false)
@@ -78,117 +144,150 @@ export function NotesPage() {
   const [shareEmail, setShareEmail] = useState('')
   const [sharePerm, setSharePerm] = useState<'read' | 'write'>('read')
   const [shareStatus, setShareStatus] = useState<string | null>(null)
+  const [refreshTick, setRefreshTick] = useState(0)
 
-  // Sync notes from backend when workspace changes or periodically
+  useWorkspaceEvents((evt) => {
+    if (['notes', 'files', 'planning', 'file_meta', 'links'].includes(evt.type)) {
+      setRefreshTick((v) => v + 1)
+    }
+  })
+
+  // Load notes for current workspace
   useEffect(() => {
-    if (!token || !currentWorkspace || !ownerUserId) return
-    const workspaceId = currentWorkspace.id
-    if (!workspaceId) return // Type guard
-    
-    // Extract as string to avoid type narrowing issues
-    const wsIdString: string = String(workspaceId)
-    const encodedId: string = encodeURIComponent(wsIdString)
-    const url: string = `/notes?workspaceId=${encodedId}`
-    const wsId: string = wsIdString
-    
+    if (!token || !currentWorkspace?.id) return
+    const workspaceId = String(currentWorkspace.id)
+    const url = `/notes?workspaceId=${encodeURIComponent(workspaceId)}`
     let cancelled = false
     async function sync() {
       try {
         const result = await apiFetch(url, { token: token || undefined })
         if (cancelled) return
-        
-        const remoteNotes = (result.notes || []) as Array<{
-          id: string
-          subject: string
-          body: string
-        }>
-        
-        // Sync remote notes to local DB
-        for (const remote of remoteNotes) {
-          const existing = await db.notes.where('remoteId').equals(remote.id).first()
-          const localNote: Partial<NoteDraft> = {
-            ownerUserId,
-            workspaceId: wsId || undefined,
-            subject: remote.subject,
-            body: remote.body,
-            attachmentFileIds: [],
-            remoteId: remote.id,
-            updatedAt: Date.now(),
-          }
-          
-          if (existing) {
-            await db.notes.update(existing.id!, localNote)
-          } else {
-            localNote.createdAt = Date.now()
-            await db.notes.add(localNote as NoteDraft)
-          }
-        }
+        const remoteNotes = (result.notes || []) as ServerNote[]
+        remoteNotes.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+        setNotes(remoteNotes)
       } catch (e) {
-        // Silently fail - sync errors are expected when offline
         if (import.meta.env.DEV) {
-          console.error('Failed to sync notes:', e)
+          console.error('Failed to load notes:', e)
         }
       }
     }
-    
-    // Initial sync
     void sync()
-    
-    // Periodic sync every 30 seconds to catch changes from other users
     const interval = setInterval(() => {
       if (!cancelled) void sync()
     }, 30000)
-    
     return () => {
       cancelled = true
       clearInterval(interval)
     }
-  }, [token, currentWorkspace?.id, ownerUserId])
+  }, [token, currentWorkspace?.id, refreshTick])
 
-  const notes = useLiveQuery(async () => {
-    if (!ownerUserId) return []
-    // Filter by workspace if available
-    if (currentWorkspace?.id) {
-      const workspaceId = currentWorkspace.id
-      const list = await db.notes.where('workspaceId').equals(workspaceId).toArray()
-      list.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-      return list
+  // Load files for current workspace
+  useEffect(() => {
+    if (!token || !currentWorkspace?.id) return
+    const workspaceId = String(currentWorkspace.id)
+    const url = `/files?workspaceId=${encodeURIComponent(workspaceId)}`
+    let cancelled = false
+    async function sync() {
+      try {
+        const result = await apiFetch(url, { token: token || undefined })
+        if (cancelled) return
+        const remoteFiles = (result.files || []) as ServerFile[]
+        remoteFiles.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+        setFiles(remoteFiles)
+      } catch (e) {
+        if (import.meta.env.DEV) {
+          console.error('Failed to load files:', e)
+        }
+      }
     }
-    // Fallback to ownerUserId for backward compatibility
-    const list = await db.notes.where('ownerUserId').equals(ownerUserId).toArray()
-    list.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-    return list
-  }, [ownerUserId, currentWorkspace?.id])
+    void sync()
+    return () => {
+      cancelled = true
+    }
+  }, [token, currentWorkspace?.id, refreshTick])
 
-  const files = useLiveQuery(async () => {
-    if (!ownerUserId) return []
-    const list = await db.files.where('ownerUserId').equals(ownerUserId).toArray()
-    list.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
-    return list
-  }, [ownerUserId])
+  // Load file meta for current workspace
+  useEffect(() => {
+    if (!token || !currentWorkspace?.id) return
+    const workspaceId = String(currentWorkspace.id)
+    const url = `/file-meta?workspaceId=${encodeURIComponent(workspaceId)}`
+    let cancelled = false
+    async function sync() {
+      try {
+        const result = await apiFetch(url, { token: token || undefined })
+        if (cancelled) return
+        const remoteMeta = (result.items || []) as ServerFileMeta[]
+        setMetas(remoteMeta)
+      } catch (e) {
+        if (import.meta.env.DEV) {
+          console.error('Failed to load file meta:', e)
+        }
+      }
+    }
+    void sync()
+    return () => {
+      cancelled = true
+    }
+  }, [token, currentWorkspace?.id, refreshTick])
 
-  const planning = useLiveQuery(async () => {
-    const list = user?.id
-      ? await db.planning.where('ownerUserId').equals(user.id).toArray()
-      : await db.planning.toArray()
-    list.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-    return list
-  }, [user?.id])
+  // Load planning items for linking
+  useEffect(() => {
+    if (!token || !currentWorkspace?.id) return
+    const workspaceId = String(currentWorkspace.id)
+    const url = `/planning?workspaceId=${encodeURIComponent(workspaceId)}`
+    let cancelled = false
+    async function sync() {
+      try {
+        const result = await apiFetch(url, { token: token || undefined })
+        if (cancelled) return
+        const items = (result.items || []) as ServerPlanningItem[]
+        items.sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start))
+        setPlanning(items)
+      } catch (e) {
+        if (import.meta.env.DEV) {
+          console.error('Failed to load planning items:', e)
+        }
+      }
+    }
+    void sync()
+    return () => {
+      cancelled = true
+    }
+  }, [token, currentWorkspace?.id, refreshTick])
 
-  const noteLinks = useLiveQuery(async () => {
-    if (!draft.id) return []
-    if (!ownerUserId) return []
-    const list = await db.links
-      .where('[ownerUserId+fromId]')
-      .equals([ownerUserId, draft.id])
-      .and((l) => l.fromType === 'note')
-      .toArray()
-    return list
-  }, [draft.id, ownerUserId])
+  // Load links for selected note
+  useEffect(() => {
+    if (!token || !currentWorkspace?.id || !selectedId) {
+      setNoteLinks({ planningId: '', fileKeys: [] })
+      return
+    }
+    const workspaceId = String(currentWorkspace.id)
+    const url = `/links?workspaceId=${encodeURIComponent(workspaceId)}&fromType=note&fromId=${encodeURIComponent(selectedId)}`
+    let cancelled = false
+    async function sync() {
+      try {
+        const result = await apiFetch(url, { token: token || undefined })
+        if (cancelled) return
+        const items = (result.items || []) as Array<{ toType: 'fileGroup' | 'note' | 'planning'; toKey: string }>
+        const planningId = items.find((l) => l.toType === 'planning')?.toKey ?? ''
+        const fileKeys = items.filter((l) => l.toType === 'fileGroup').map((l) => l.toKey)
+        setNoteLinks({ planningId, fileKeys })
+        setDraft((d) => ({ ...d, attachmentGroupKeys: fileKeys }))
+      } catch (e) {
+        if (import.meta.env.DEV) {
+          console.error('Failed to load links:', e)
+        }
+      }
+    }
+    void sync()
+    return () => {
+      cancelled = true
+    }
+  }, [token, currentWorkspace?.id, selectedId, refreshTick])
 
   useEffect(() => {
     const qId = params.get('noteId')
-    if (qId && /^\d+$/.test(qId)) setSelectedId(Number(qId))
+    if (qId) setSelectedId(qId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -196,95 +295,114 @@ export function NotesPage() {
     if (!notes) return
     if (selectedId == null) return
     const found = notes.find((n) => n.id === selectedId)
-    if (found) setDraft(found)
-  }, [notes, selectedId])
+    if (found) {
+      setDraft({
+        id: found.id,
+        subject: found.subject,
+        body: found.body,
+        attachmentGroupKeys: noteLinks.fileKeys,
+        updatedAt: found.updatedAt,
+      })
+    }
+  }, [notes, selectedId, noteLinks.fileKeys])
+
+  const fileGroups = useMemo<FileGroup[]>(() => {
+    const map = new Map<string, { groupKey: string; name: string; type: string; size: number; latest: ServerFile }>()
+    for (const f of files ?? []) {
+      const cur = map.get(f.groupKey)
+      if (!cur || (f.createdAt ?? 0) > cur.latest.createdAt) {
+        map.set(f.groupKey, { groupKey: f.groupKey, name: f.name, type: f.type, size: f.size, latest: f })
+      }
+    }
+    const metaByKey = new Map<string, ServerFileMeta>()
+    for (const m of metas ?? []) metaByKey.set(m.groupKey, m)
+    return Array.from(map.values()).map((g) => ({
+      ...g,
+      folder: metaByKey.get(g.groupKey)?.folder || '',
+    }))
+  }, [files, metas])
 
   const selectedFiles = useMemo(() => {
-    if (!files) return []
-    const byId = new Map(files.map((f) => [f.id, f] as const))
-    return (draft.attachmentFileIds ?? [])
-      .map((id) => byId.get(id))
-      .filter(Boolean) as StoredFile[]
-  }, [files, draft.attachmentFileIds])
+    const byKey = new Map(fileGroups.map((g) => [g.groupKey, g] as const))
+    return (draft.attachmentGroupKeys ?? [])
+      .map((k) => byKey.get(k))
+      .filter((g): g is FileGroup => Boolean(g))
+  }, [fileGroups, draft.attachmentGroupKeys])
 
   function newNote() {
     setSelectedId(null)
-    const now = Date.now()
     setDraft({
-      ownerUserId,
       subject: '',
       body: '',
-      attachmentFileIds: [],
-      createdAt: now,
-      updatedAt: now,
+      attachmentGroupKeys: [],
     })
     setStatus(null)
   }
 
-  async function save() {
-    setStatus(null)
-    const now = Date.now()
-
-    if (draft.id) {
-      await db.notes.update(draft.id, {
-        ownerUserId,
-        workspaceId: currentWorkspace?.id ?? undefined,
-        subject: draft.subject,
-        body: draft.body,
-        attachmentFileIds: draft.attachmentFileIds ?? [],
-        updatedAt: now,
-      })
-      // cloud sync (best effort)
-      if (token && currentWorkspace) {
-        const rec = await db.notes.get(draft.id)
-        if (rec) {
-          const remote = await apiFetch(`/notes?workspaceId=${encodeURIComponent(currentWorkspace.id)}`, {
-            method: 'POST',
-            token,
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-              id: rec.remoteId,
-              subject: rec.subject,
-              body: rec.body,
-              workspaceId: currentWorkspace.id,
-            }),
-          })
-          const remoteId = remote.note?.id as string | undefined
-          if (remoteId && rec.remoteId !== remoteId) await db.notes.update(draft.id, { remoteId })
-        }
-      }
-      setStatus('Opgeslagen.')
+  async function saveLinks(next: { planningId: string; fileKeys: string[] }, noteId: string) {
+    if (!token || !currentWorkspace?.id) {
+      setNoteLinks(next)
       return
     }
-
-    const id = await db.notes.add({
-      ownerUserId,
-      workspaceId: currentWorkspace?.id || null,
-      subject: draft.subject,
-      body: draft.body,
-      attachmentFileIds: draft.attachmentFileIds ?? [],
-      createdAt: now,
-      updatedAt: now,
-    })
-    setSelectedId(id)
-    if (token && currentWorkspace) {
-      const rec = await db.notes.get(id)
-      if (rec) {
-        const remote = await apiFetch(`/notes?workspaceId=${encodeURIComponent(currentWorkspace.id)}`, {
-          method: 'POST',
-          token,
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            subject: rec.subject,
-            body: rec.body,
-            workspaceId: currentWorkspace.id,
-          }),
-        })
-        const remoteId = remote.note?.id as string | undefined
-        if (remoteId) await db.notes.update(id, { remoteId })
+    const workspaceId = String(currentWorkspace.id)
+    const links = [
+      ...(next.planningId ? [{ toType: 'planning' as const, toKey: next.planningId }] : []),
+      ...next.fileKeys.map((k) => ({ toType: 'fileGroup' as const, toKey: k })),
+    ]
+    try {
+      await apiFetch('/links', {
+        method: 'POST',
+        token: token || undefined,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          workspaceId,
+          fromType: 'note',
+          fromId: noteId,
+          links,
+        }),
+      })
+      setNoteLinks(next)
+    } catch (e) {
+      if (import.meta.env.DEV) {
+        console.error('Failed to save links:', e)
       }
     }
-    setStatus('Opgeslagen.')
+  }
+
+  async function save() {
+    setStatus(null)
+    if (!token || !currentWorkspace?.id) return
+    try {
+      const result = await apiFetch(`/notes?workspaceId=${encodeURIComponent(currentWorkspace.id)}`, {
+        method: 'POST',
+        token: token || undefined,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          id: draft.id,
+          subject: draft.subject,
+          body: draft.body,
+          workspaceId: currentWorkspace.id,
+        }),
+      })
+      const note = result.note as ServerNote
+      setNotes((prev) => {
+        const idx = prev.findIndex((n) => n.id === note.id)
+        if (idx >= 0) {
+          const next = prev.slice()
+          next[idx] = note
+          return next
+        }
+        return [note, ...prev]
+      })
+      setSelectedId(note.id)
+      setDraft((d) => ({ ...d, id: note.id }))
+      await saveLinks({ planningId: noteLinks.planningId, fileKeys: draft.attachmentGroupKeys }, note.id)
+      setStatus('Opgeslagen.')
+    } catch (e) {
+      if (import.meta.env.DEV) {
+        console.error('Failed to save note:', e)
+      }
+    }
   }
 
   async function remove() {
@@ -292,8 +410,26 @@ export function NotesPage() {
       newNote()
       return
     }
-    await db.notes.delete(draft.id)
-    newNote()
+    if (!token) return
+    try {
+      await apiFetch(`/notes/${draft.id}`, { method: 'DELETE', token: token || undefined })
+      setNotes((prev) => prev.filter((n) => n.id !== draft.id))
+      newNote()
+    } catch (e) {
+      if (import.meta.env.DEV) {
+        console.error('Failed to delete note:', e)
+      }
+    }
+  }
+
+  async function downloadRemote(file: ServerFile) {
+    if (!token) return
+    try {
+      const blob = await fetchFileBlob(file.id, token)
+      downloadBlob(blob, file.name)
+    } catch {
+      // ignore
+    }
   }
 
   function exportTxt() {
@@ -323,10 +459,15 @@ export function NotesPage() {
     const content = `Onderwerp: ${draft.subject || '(geen)'}\n\n${txt || ''}\n\nBijlages:\n${attachmentLines}\n`
     zip.file(`${base}.txt`, content)
 
-    for (const fileId of draft.attachmentFileIds ?? []) {
-      const f = await db.files.get(fileId)
-      if (!f) continue
-      zip.file(f.name, f.data)
+    for (const g of selectedFiles) {
+      const f = g.latest
+      if (!token) continue
+      try {
+        const blob = await fetchFileBlob(f.id, token)
+        zip.file(f.name, blob)
+      } catch {
+        // ignore missing files
+      }
     }
 
     const blob = await zip.generateAsync({ type: 'blob' })
@@ -339,9 +480,9 @@ export function NotesPage() {
         Notities / mail
       </Typography>
 
-      {!ownerUserId && (
+      {!token && (
         <Alert severity="info">
-          Login vereist: notities zijn per gebruiker privé. Andere users (ook admin) zien ze niet tenzij gedeeld (cloud).
+          Login vereist om notities te laden en op te slaan voor de werkgroep.
         </Alert>
       )}
 
@@ -415,11 +556,6 @@ export function NotesPage() {
                       setShareStatus('Eerst opslaan.')
                       return
                     }
-                    const rec = await db.notes.get(draft.id)
-                    if (!rec?.remoteId) {
-                      setShareStatus('Eerst opslaan (cloud sync) om te kunnen delen.')
-                      return
-                    }
                     if (!shareEmail) {
                       setShareStatus('Vul email in.')
                       return
@@ -427,11 +563,11 @@ export function NotesPage() {
                     try {
                       await apiFetch('/shares', {
                         method: 'POST',
-                        token,
+                        token: token || undefined,
                         headers: { 'content-type': 'application/json' },
                         body: JSON.stringify({
                           resourceType: 'note',
-                          resourceId: rec.remoteId,
+                          resourceId: draft.id,
                           granteeEmail: shareEmail,
                           permission: sharePerm,
                         }),
@@ -530,29 +666,13 @@ export function NotesPage() {
             <TextField
               select
               label="Link naar planning (optioneel)"
-              value={
-                noteLinks?.find((l) => l.toType === 'planning')?.toKey ?? ''
-              }
+              value={noteLinks.planningId}
               onChange={async (e) => {
-                if (!draft.id) return
                 const val = e.target.value as string
-                // remove old planning links
-                const existing = await db.links
-                  .where('[ownerUserId+fromId]')
-                  .equals([ownerUserId, draft.id] as [string, number])
-                  .and((l) => l.fromType === 'note' && l.toType === 'planning')
-                  .toArray()
-                await db.links.bulkDelete(existing.map((x) => x.id!).filter(Boolean))
-                if (val) {
-                  await db.links.add({
-                    ownerUserId,
-                    fromType: 'note',
-                    fromId: draft.id,
-                    toType: 'planning',
-                    toKey: val,
-                    createdAt: Date.now(),
-                  })
+                if (draft.id) {
+                  await saveLinks({ planningId: val, fileKeys: draft.attachmentGroupKeys }, draft.id)
                 }
+                setNoteLinks((prev) => ({ ...prev, planningId: val }))
               }}
             >
               <MenuItem value="">(geen)</MenuItem>
@@ -563,23 +683,24 @@ export function NotesPage() {
               ))}
             </TextField>
 
-            <Autocomplete
+            <Autocomplete<FileGroup, true, false, false>
               multiple
-              options={files ?? []}
+              options={fileGroups}
               value={selectedFiles}
-              isOptionEqualToValue={(o, v) => o.id === v.id}
-              getOptionLabel={(o) => o.name}
-              onChange={(_e, newValue) =>
-                setDraft((d) => ({
-                  ...d,
-                  attachmentFileIds: newValue.map((f) => f.id!).filter(Boolean),
-                }))
-              }
+              isOptionEqualToValue={(o, v) => o.groupKey === v.groupKey}
+              getOptionLabel={(o) => `${o.name}${o.folder ? ` • ${o.folder}` : ''}`}
+              onChange={(_e, newValue) => {
+                const keys = newValue.map((f) => f.groupKey)
+                setDraft((d) => ({ ...d, attachmentGroupKeys: keys }))
+                if (draft.id) {
+                  void saveLinks({ planningId: noteLinks.planningId, fileKeys: keys }, draft.id)
+                }
+              }}
               renderInput={(params) => (
                 <TextField
                   {...params}
                   label="Bijlages (kies uit Bestanden)"
-                  placeholder={files && files.length > 0 ? 'Selecteer...' : 'Geen bestanden geüpload'}
+                  placeholder={fileGroups.length > 0 ? 'Selecteer...' : 'Geen bestanden geüpload'}
                 />
               )}
             />
@@ -590,20 +711,20 @@ export function NotesPage() {
                   Geselecteerde bijlages
                 </Typography>
                 <List dense disablePadding>
-                  {selectedFiles.map((f) => (
-                    <ListItemButton key={f.id} onClick={() => setPreview(f)}>
+                  {selectedFiles.map((g) => (
+                    <ListItemButton key={g.groupKey} onClick={() => setPreview(toStoredFile(g.latest))}>
                       <ListItemText
-                        primary={f.name}
-                        secondary={`${formatBytes(f.size)} • ${f.type || 'onbekend'}`}
+                        primary={g.name}
+                        secondary={`${formatBytes(g.size)} • ${g.type || 'onbekend'}`}
                       />
                       <ListItemSecondaryAction>
-                        <IconButton aria-label="Preview" edge="end" onClick={() => setPreview(f)}>
+                        <IconButton aria-label="Preview" edge="end" onClick={() => setPreview(toStoredFile(g.latest))}>
                           <PreviewIcon />
                         </IconButton>
                         <IconButton
                           aria-label="Download"
                           edge="end"
-                          onClick={() => downloadBlob(f.data, f.name)}
+                          onClick={() => void downloadRemote(g.latest)}
                         >
                           <DownloadIcon />
                         </IconButton>
@@ -643,7 +764,7 @@ export function NotesPage() {
       <NotePreviewDialog
         open={notePreviewOpen}
         note={draft}
-        files={selectedFiles}
+        files={selectedFiles.map((g) => toStoredFile(g.latest))}
         onClose={() => setNotePreviewOpen(false)}
       />
     </Box>

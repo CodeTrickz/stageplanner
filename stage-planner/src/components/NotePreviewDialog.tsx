@@ -1,6 +1,8 @@
 import DownloadIcon from '@mui/icons-material/Download'
 import { Alert, Box, Button, Dialog, DialogContent, DialogTitle, Divider, Stack, Typography, useMediaQuery, useTheme } from '@mui/material'
-import type { NoteDraft, StoredFile } from '../db/db'
+import type { StoredFile } from '../db/db'
+import { fetchFileBlob } from '../utils/files'
+import { useApiToken } from '../api/client'
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -20,12 +22,24 @@ export function NotePreviewDialog({
   onClose,
 }: {
   open: boolean
-  note: NoteDraft | null
+  note: { subject: string; body: string; updatedAt?: number } | null
   files: StoredFile[]
   onClose: () => void
 }) {
+  const token = useApiToken()
   const theme = useTheme()
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
+
+  async function downloadRemote(file: StoredFile) {
+    if (!token || !file.remoteId) return
+    try {
+      const blob = await fetchFileBlob(file.remoteId, token)
+      downloadBlob(blob, file.name)
+    } catch {
+      // ignore
+    }
+  }
+
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" fullScreen={fullScreen}>
       <DialogTitle>
@@ -36,7 +50,7 @@ export function NotePreviewDialog({
             </Typography>
             {note && (
               <Typography variant="body2" color="text.secondary" noWrap>
-                Laatst aangepast: {new Date(note.updatedAt).toLocaleString()}
+                Laatst aangepast: {note.updatedAt ? new Date(note.updatedAt).toLocaleString() : '-'}
               </Typography>
             )}
           </Box>
@@ -70,7 +84,7 @@ export function NotePreviewDialog({
               <Stack spacing={1}>
                 {files.map((f) => (
                   <Stack
-                    key={f.id}
+                    key={f.remoteId ?? f.name}
                     direction="row"
                     spacing={2}
                     alignItems="center"
@@ -83,7 +97,7 @@ export function NotePreviewDialog({
                       size="small"
                       variant="outlined"
                       startIcon={<DownloadIcon />}
-                      onClick={() => downloadBlob(f.data, f.name)}
+                      onClick={() => void downloadRemote(f)}
                     >
                       Download
                     </Button>

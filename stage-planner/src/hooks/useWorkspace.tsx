@@ -47,12 +47,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         }
       }
       
-      // Default to first workspace or personal workspace
+      // Default to a shared workspace if possible, otherwise personal or first
       if (list.length > 0) {
-        const personal = list.find((w) => w.role === 'STUDENT' && w.ownerId) || list[0]
-        setCurrentWorkspaceState(personal)
-        if (personal) {
-          localStorage.setItem(WORKSPACE_STORAGE_KEY, personal.id)
+        const shared = list.find((w) => !w.isPersonal) || list[0]
+        setCurrentWorkspaceState(shared)
+        if (shared) {
+          localStorage.setItem(WORKSPACE_STORAGE_KEY, shared.id)
         }
       }
     } catch (e) {

@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { db } from '../db/db'
 import { useSettings } from '../app/settings'
 
 type User = {
@@ -48,17 +47,6 @@ function enrichUserFromToken(token: string, user: User): User {
   }
 }
 
-async function claimLegacyLocalPlanning(userId: string) {
-  try {
-    // Claim any legacy items (ownerUserId is null) for current user.
-    const legacy = await db.planning.filter((item) => item.ownerUserId === null).toArray()
-    if (legacy.length > 0) {
-      await Promise.all(legacy.map((item) => item.id && db.planning.update(item.id, { ownerUserId: userId })))
-    }
-  } catch {
-    // ignore
-  }
-}
 
 function tokenExpiresAt(token: string): number | null {
   const payload = decodeJwtPayload(token)
@@ -86,7 +74,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       const enriched = enrichUserFromToken(parsed.token, parsed.user as User)
       setState({ token: parsed.token, user: enriched, expiresAt: exp })
-      void claimLegacyLocalPlanning(enriched.id)
     } catch {
       // ignore
     }
@@ -159,7 +146,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const next: AuthState = { token, user: enriched, expiresAt }
         setState(next)
         localStorage.setItem(LS_KEY, JSON.stringify(next))
-        void claimLegacyLocalPlanning(enriched.id)
       },
       logout: () => {
         setState(null)

@@ -6,10 +6,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import * as XLSX from 'xlsx'
 import type { StoredFile } from '../db/db'
 import { useObjectUrl } from '../hooks/useObjectUrl'
-import { fileCategory, formatBytes } from '../utils/files'
-import { db } from '../db/db'
+import { fetchFileBlob, fileCategory, formatBytes } from '../utils/files'
 import Tesseract from 'tesseract.js'
 import { useSettings } from '../app/settings'
+import { useApiToken } from '../api/client'
 // pdfjs-dist v3.x
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
@@ -35,10 +35,15 @@ export function FilePreviewDialog({
   file: StoredFile | null
   onClose: () => void
 }) {
+  const token = useApiToken()
   const { autoExtractTextOnOpen, ocrLanguage } = useSettings()
   const theme = useTheme()
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
-  const url = useObjectUrl(file?.data ?? null)
+  const [blob, setBlob] = useState<Blob | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const localBlob = file?.data && file.data.size > 0 ? file.data : null
+  const activeBlob = blob ?? localBlob
+  const url = useObjectUrl(activeBlob ?? null)
   const cat = useMemo(() => (file ? fileCategory(file) : 'other'), [file])
   const [text, setText] = useState<string | null>(null)
   const [docxHtml, setDocxHtml] = useState<string | null>(null)
@@ -48,22 +53,50 @@ export function FilePreviewDialog({
 
   useEffect(() => {
     let cancelled = false
+    async function ensureBlob() {
+      if (!open || !file) return
+      if (localBlob || blob) return
+      if (!token || !file.remoteId) {
+        setLoadError('Bestand kan niet worden opgehaald (geen server-id of login).')
+        return
+      }
+      try {
+        const remoteBlob = await fetchFileBlob(file.remoteId, token)
+        if (!cancelled) {
+          setBlob(remoteBlob)
+          setLoadError(null)
+        }
+      } catch (e) {
+        if (!cancelled) setLoadError(e instanceof Error ? e.message : 'Bestand laden mislukt.')
+      }
+    }
+    setBlob(null)
+    setLoadError(null)
+    void ensureBlob()
+    return () => {
+      cancelled = true
+    }
+  }, [open, file?.remoteId, token, localBlob])
+
+  useEffect(() => {
+    let cancelled = false
     async function run() {
       if (!file) return
+      if (!activeBlob) return
       try {
         if (cat === 'text') {
-          const t = await file.data.text()
+          const t = await activeBlob.text()
           if (!cancelled) setText(t)
           return
         }
         if (cat === 'office-word') {
-          const buf = await file.data.arrayBuffer()
+          const buf = await activeBlob.arrayBuffer()
           const res = await mammoth.convertToHtml({ arrayBuffer: buf as ArrayBuffer })
           if (!cancelled) setDocxHtml(res.value || '')
           return
         }
         if (cat === 'office-excel') {
-          const buf = await file.data.arrayBuffer()
+          const buf = await activeBlob.arrayBuffer()
           const wb = XLSX.read(buf, { type: 'array' })
           const sheetName = wb.SheetNames[0]
           const ws = sheetName ? wb.Sheets[sheetName] : undefined
@@ -82,41 +115,21 @@ export function FilePreviewDialog({
     return () => {
       cancelled = true
     }
-  }, [file, cat])
-
-  useEffect(() => {
-    let cancelled = false
-    async function loadCached() {
-      setOcrText(null)
-      setOcrStatus('idle')
-      if (!file?.id) return
-      const owner = file?.ownerUserId || '__local__'
-      const cached = await db.ocr.where('[ownerUserId+fileId]').equals([owner, file.id]).first()
-      if (!cached) return
-      if (!cancelled) {
-        setOcrText(cached.text)
-        setOcrStatus('done')
-      }
-    }
-    void loadCached()
-    return () => {
-      cancelled = true
-    }
-  }, [file?.id, file?.ownerUserId])
+  }, [file, cat, activeBlob])
 
   const runOcr = useCallback(async () => {
-    if (!file?.id) return
+    if (!activeBlob) return
     setOcrStatus('loading')
     setOcrText(null)
     try {
       let extracted = ''
       if (cat === 'images') {
         const lang = (ocrLanguage || 'eng').trim() || 'eng'
-        const { data } = await Tesseract.recognize(file.data, lang)
+        const { data } = await Tesseract.recognize(activeBlob, lang)
         extracted = data.text || ''
       } else if (cat === 'pdf') {
         // Extract embedded text (fast). For scanned PDFs OCR is more work; this covers most PDFs.
-        const buf = await file.data.arrayBuffer()
+        const buf = await activeBlob.arrayBuffer()
         // configure worker src for pdfjs
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ;(pdfjsLib as any).GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js`
@@ -135,16 +148,13 @@ export function FilePreviewDialog({
         extracted = ''
       }
 
-      const now = Date.now()
-      const owner = file?.ownerUserId || '__local__'
-      await db.ocr.put({ ownerUserId: owner, fileId: file.id, text: extracted, createdAt: now, updatedAt: now })
       setOcrText(extracted)
       setOcrStatus('done')
     } catch (e) {
       setOcrStatus('error')
       setOcrText(e instanceof Error ? e.message : 'ocr_failed')
     }
-  }, [file, cat, ocrLanguage])
+  }, [file, cat, ocrLanguage, activeBlob])
 
   // Auto run OCR/extract on open (only if not cached yet)
   useEffect(() => {
@@ -152,12 +162,8 @@ export function FilePreviewDialog({
     async function maybeAuto() {
       if (!open) return
       if (!autoExtractTextOnOpen) return
-      if (!file?.id) return
       if (!(cat === 'images' || cat === 'pdf')) return
       if (ocrStatus === 'loading' || ocrStatus === 'done') return
-      const owner = file?.ownerUserId || '__local__'
-      const cached = await db.ocr.where('[ownerUserId+fileId]').equals([owner, file.id]).first()
-      if (cached) return
       if (!cancelled) await runOcr()
     }
     void maybeAuto()
@@ -204,7 +210,19 @@ export function FilePreviewDialog({
                 variant="outlined"
                 size="small"
                 startIcon={<DownloadIcon />}
-                onClick={() => downloadBlob(file.data, file.name)}
+                onClick={async () => {
+                  if (activeBlob) {
+                    downloadBlob(activeBlob, file.name)
+                    return
+                  }
+                  if (!token || !file.remoteId) return
+                  try {
+                    const remoteBlob = await fetchFileBlob(file.remoteId, token)
+                    downloadBlob(remoteBlob, file.name)
+                  } catch {
+                    // ignore
+                  }
+                }}
               >
                 Download
               </Button>
@@ -214,6 +232,7 @@ export function FilePreviewDialog({
       </DialogTitle>
       <DialogContent dividers>
         {!file && <Alert severity="info">Geen bestand geselecteerd.</Alert>}
+        {loadError && <Alert severity="warning" sx={{ mb: 1 }}>{loadError}</Alert>}
 
         {file && cat === 'images' && url && (
           <Box

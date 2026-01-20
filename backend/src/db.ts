@@ -140,6 +140,25 @@ export type DbFile = {
   updatedAt: number
 }
 
+export type DbFileMeta = {
+  workspaceId: string
+  groupKey: string
+  folder: string
+  labelsJson: string
+  createdAt: number
+  updatedAt: number
+}
+
+export type DbEntityLink = {
+  id: number
+  workspaceId: string
+  fromType: 'planning' | 'note'
+  fromId: string
+  toType: 'fileGroup' | 'note' | 'planning'
+  toKey: string
+  createdAt: number
+}
+
 type JsonState = {
   groups: DbGroup[]
   users: DbUser[]
@@ -445,9 +464,33 @@ function openSqlite() {
       FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
       FOREIGN KEY(workspace_id) REFERENCES groups(id) ON DELETE CASCADE
     );
+    
+    CREATE TABLE IF NOT EXISTS file_meta (
+      workspace_id TEXT NOT NULL,
+      group_key TEXT NOT NULL,
+      folder TEXT NOT NULL,
+      labels_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (workspace_id, group_key),
+      FOREIGN KEY(workspace_id) REFERENCES groups(id) ON DELETE CASCADE
+    );
+    
+    CREATE TABLE IF NOT EXISTS entity_links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      workspace_id TEXT NOT NULL,
+      from_type TEXT NOT NULL,
+      from_id TEXT NOT NULL,
+      to_type TEXT NOT NULL,
+      to_key TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY(workspace_id) REFERENCES groups(id) ON DELETE CASCADE
+    );
     CREATE INDEX IF NOT EXISTS idx_files_workspace ON files(workspace_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_files_group_key ON files(group_key, version);
     CREATE INDEX IF NOT EXISTS idx_files_user ON files(user_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_file_meta_workspace ON file_meta(workspace_id, updated_at);
+    CREATE INDEX IF NOT EXISTS idx_entity_links_from ON entity_links(workspace_id, from_type, from_id);
     CREATE INDEX IF NOT EXISTS idx_feedback_resource ON feedback(resource_type, resource_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_feedback_author ON feedback(author_id, created_at);
   `)
@@ -628,7 +671,7 @@ export const db = {
     return input
   },
 
-  listGroupsForUser: (userId: string): Array<DbGroup & { role: WorkspaceRole }> => {
+  listGroupsForUser: (userId: string): Array<DbGroup & { role: WorkspaceRole; isPersonal: boolean }> => {
     if (sqliteDb) {
       // Check which columns exist
       const groupCols = sqliteDb
@@ -676,6 +719,8 @@ export const db = {
           createdAt: number
           role: string
         }>
+      const personal = sqliteDb.prepare(`SELECT group_id as groupId FROM users WHERE id=?`).get(userId) as { groupId?: string } | undefined
+      const personalId = personal?.groupId || null
       return rows.map((r) => {
         // Migrate old 'admin' role to 'STUDENT'
         let role = r.role
@@ -690,15 +735,16 @@ export const db = {
           ownerId: r.ownerId ?? undefined,
           createdAt: r.createdAt,
           role: role as WorkspaceRole,
+          isPersonal: !!(personalId && r.id === personalId),
         }
-      }) as Array<DbGroup & { role: WorkspaceRole }>
+      }) as Array<DbGroup & { role: WorkspaceRole; isPersonal: boolean }>
     }
     const s = readJson()
     // fallback: only personal group
     const u = s.users.find((x) => x.id === userId)
     if (!u?.groupId) return []
     const g = s.groups.find((gg) => gg.id === u.groupId)
-    return g ? [{ ...g, role: 'STUDENT' }] : []
+    return g ? [{ ...g, role: 'STUDENT', isPersonal: true }] : []
   },
 
   isMemberOfGroup: (userId: string, groupId: string): boolean => {
@@ -2431,6 +2477,72 @@ export const db = {
            FROM files WHERE user_id=? ORDER BY created_at DESC`,
         )
         .all(userId) as DbFile[]
+    }
+    return []
+  },
+
+  listFileMetaForWorkspace: (workspaceId: string): DbFileMeta[] => {
+    if (sqliteDb) {
+      return sqliteDb
+        .prepare(
+          `SELECT workspace_id as workspaceId, group_key as groupKey, folder, labels_json as labelsJson, created_at as createdAt, updated_at as updatedAt
+           FROM file_meta WHERE workspace_id=? ORDER BY updated_at DESC`,
+        )
+        .all(workspaceId) as DbFileMeta[]
+    }
+    return []
+  },
+
+  upsertFileMeta: (workspaceId: string, groupKey: string, folder: string, labelsJson: string): DbFileMeta => {
+    const createdAt = now()
+    const updatedAt = now()
+    if (sqliteDb) {
+      const existing = sqliteDb
+        .prepare(`SELECT created_at as createdAt FROM file_meta WHERE workspace_id=? AND group_key=?`)
+        .get(workspaceId, groupKey) as { createdAt?: number } | undefined
+      const created = existing?.createdAt ?? createdAt
+      sqliteDb
+        .prepare(
+          `INSERT INTO file_meta (workspace_id, group_key, folder, labels_json, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(workspace_id, group_key) DO UPDATE SET folder=excluded.folder, labels_json=excluded.labels_json, updated_at=excluded.updated_at`,
+        )
+        .run(workspaceId, groupKey, folder, labelsJson, created, updatedAt)
+      return { workspaceId, groupKey, folder, labelsJson, createdAt: created, updatedAt }
+    }
+    return { workspaceId, groupKey, folder, labelsJson, createdAt, updatedAt }
+  },
+
+  listLinksForItem: (workspaceId: string, fromType: 'planning' | 'note', fromId: string): DbEntityLink[] => {
+    if (sqliteDb) {
+      return sqliteDb
+        .prepare(
+          `SELECT id, workspace_id as workspaceId, from_type as fromType, from_id as fromId, to_type as toType, to_key as toKey, created_at as createdAt
+           FROM entity_links WHERE workspace_id=? AND from_type=? AND from_id=?`,
+        )
+        .all(workspaceId, fromType, fromId) as DbEntityLink[]
+    }
+    return []
+  },
+
+  replaceLinksForItem: (
+    workspaceId: string,
+    fromType: 'planning' | 'note',
+    fromId: string,
+    links: Array<{ toType: 'fileGroup' | 'note' | 'planning'; toKey: string }>,
+  ): DbEntityLink[] => {
+    const createdAt = now()
+    if (sqliteDb) {
+      sqliteDb.prepare(`DELETE FROM entity_links WHERE workspace_id=? AND from_type=? AND from_id=?`).run(workspaceId, fromType, fromId)
+      for (const l of links) {
+        sqliteDb
+          .prepare(
+            `INSERT INTO entity_links (workspace_id, from_type, from_id, to_type, to_key, created_at)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+          )
+          .run(workspaceId, fromType, fromId, l.toType, l.toKey, createdAt)
+      }
+      return db.listLinksForItem(workspaceId, fromType, fromId)
     }
     return []
   },

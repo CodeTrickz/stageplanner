@@ -11,7 +11,7 @@ type CacheEntry = {
 }
 
 const ttlSecondsEnv = Number.parseInt(process.env.CACHE_TTL_SECONDS || '', 10)
-const ttlSeconds = Number.isFinite(ttlSecondsEnv) && ttlSecondsEnv > 0 ? ttlSecondsEnv : 45
+const ttlSeconds = Number.isFinite(ttlSecondsEnv) && ttlSecondsEnv > 0 ? ttlSecondsEnv : 30
 
 const cache = new LRUCache<string, CacheEntry>({
   max: 500,
@@ -34,6 +34,8 @@ function createEtag(body: string) {
 
 function etagMatches(headerValue: string | undefined, etag: string) {
   if (!headerValue) return false
+  // Ignore If-None-Match: * (we require an exact match)
+  if (headerValue.trim() === '*') return false
   const parts = headerValue.split(',').map((p) => p.trim())
   return parts.includes(etag)
 }

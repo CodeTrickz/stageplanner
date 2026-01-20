@@ -29,7 +29,6 @@ export function LoginPage() {
     setError(null)
     setInfo(null)
     setValidationIssues([])
-    setForgotMode(false)
     setBusy(true)
     try {
       if (mode === 'register' && password !== passwordConfirm) {
@@ -70,6 +69,29 @@ export function LoginPage() {
       if (e instanceof Error && e.message !== 'invalid_input') {
         setValidationIssues([])
       }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function requestPasswordReset() {
+    setError(null)
+    setInfo(null)
+    setValidationIssues([])
+    setBusy(true)
+    try {
+      const res = await fetch(`${API}/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || 'reset_request_failed')
+      setInfo(
+        'Als het account bestaat, sturen we een reset-link. (Dev: check backend/data/mails.log. Docker: `docker compose exec backend cat /app/data/mails.log`.)',
+      )
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'reset_request_failed')
     } finally {
       setBusy(false)
     }
@@ -184,14 +206,16 @@ export function LoginPage() {
             )}
 
             {/* Wachtwoord */}
-            <TextField
-              label="Wachtwoord"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              fullWidth
-              autoComplete={isLogin ? 'current-password' : 'new-password'}
-            />
+            {!forgotMode && (
+              <TextField
+                label="Wachtwoord"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                fullWidth
+                autoComplete={isLogin ? 'current-password' : 'new-password'}
+              />
+            )}
 
             {!isLogin && (
               <TextField
@@ -204,25 +228,39 @@ export function LoginPage() {
               />
             )}
 
-            {/* Forgot password hint (UI only) */}
+            {/* Forgot password */}
             {isLogin && (
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="body2" color="text.secondary">
                   Wachtwoord vergeten?
                 </Typography>
-                <Button
-                  size="small"
-                  variant="text"
-                  onClick={() => {
-                    setForgotMode(true)
-                    setInfo(
-                      'Neem contact op met je docent of stagebegeleider om je wachtwoord te laten resetten.',
-                    )
-                  }}
-                  disabled={busy}
-                >
-                  Toon instructies
-                </Button>
+                {forgotMode ? (
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={() => {
+                      setForgotMode(false)
+                      setInfo(null)
+                      setError(null)
+                    }}
+                    disabled={busy}
+                  >
+                    Terug naar login
+                  </Button>
+                ) : (
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={() => {
+                      setForgotMode(true)
+                      setInfo(null)
+                      setError(null)
+                    }}
+                    disabled={busy}
+                  >
+                    Reset via e-mail
+                  </Button>
+                )}
               </Box>
             )}
 
@@ -256,8 +294,7 @@ export function LoginPage() {
             )}
             {forgotMode && (
               <Alert severity="info">
-                Wachtwoord vergeten? In dit systeem wordt je account centraal beheerd.
-                Neem contact op met je docent of stagebegeleider om je wachtwoord te laten resetten.
+                Vul je e-mailadres in en we sturen een reset-link als het account bestaat.
               </Alert>
             )}
 
@@ -283,16 +320,16 @@ export function LoginPage() {
               </Button>
               <Button
                 variant="contained"
-                onClick={() => void submit()}
+                onClick={() => (forgotMode && isLogin ? void requestPasswordReset() : void submit())}
                 disabled={
                   busy ||
                   !email ||
-                  !password ||
-                  (!isLogin && (!username || !firstName || !lastName || !passwordConfirm))
+                  (!forgotMode && isLogin && !password) ||
+                  (!isLogin && (!username || !firstName || !lastName || !password || !passwordConfirm))
                 }
                 sx={{ minWidth: { xs: '100%', sm: 140 } }}
               >
-                {isLogin ? 'Inloggen' : 'Registreren'}
+                {forgotMode && isLogin ? 'Stuur resetlink' : isLogin ? 'Inloggen' : 'Registreren'}
               </Button>
             </Stack>
           </Stack>

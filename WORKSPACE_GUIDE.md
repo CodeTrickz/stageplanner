@@ -1,88 +1,90 @@
-# Workspace/Team Gebruikershandleiding
+# Workspace/Team User Guide
 
-## Wat zijn Workspaces?
+## What are Workspaces?
 
-Een Workspace is een groep waar je samen met anderen (mentoren, begeleiders) kunt werken aan je stage. Elke gebruiker heeft automatisch een persoonlijke workspace.
+A Workspace is a group where you collaborate with others (mentors, supervisors) on your internship. Each user automatically has a personal workspace.
 
-## Hoe gebruik je Workspaces?
+## How to use Workspaces
 
-### 1. Workspace Selector in de Sidebar
+### 1. Workspace selector in Top Bar / Sidebar
 
-Na het inloggen zie je in de linker sidebar (onder je gebruikersnaam) een **Workspace selector**. Hier zie je:
-- De naam van je huidige workspace
-- Je rol (Student, Mentor, of Begeleider)
+After logging in you will see a **Workspace selector**:
+- On desktop in the top bar
+- On mobile/tablet in the sidebar
+- Also in **Settings** under “Group”
 
-Klik op de workspace selector om tussen verschillende workspaces te wisselen.
+It shows:
+- The name of your current workspace
+- Your role (Student, Mentor, or Supervisor)
 
-### 2. Team Pagina
+Click the workspace selector to switch between workspaces.
 
-Ga naar de **"Team"** pagina in het menu om:
-- Alle teamleden te zien
-- Nieuwe leden uit te nodigen (als je Student/eigenaar bent)
-- Rollen aan te passen (als je Student/eigenaar bent)
-- Leden te verwijderen (als je Student/eigenaar bent)
+### 2. Team page
 
-### 3. Leden Uitnodigen
+Go to the **Team** page in the menu to:
+- View all team members
+- Invite new members (if you are a Student)
+- Update roles (if you are a Student)
+- Remove members (if you are a Student)
 
-Als je de eigenaar (Student) van een workspace bent:
-1. Ga naar de **Team** pagina
-2. Klik op **"Uitnodigen"**
-3. Voer het e-mailadres in van de persoon die je wilt uitnodigen
-4. Kies de rol: **Mentor** of **Begeleider**
-5. Klik op **"Uitnodigen"**
+### 3. Inviting members
 
-De uitgenodigde persoon ontvangt een e-mail met een link om de uitnodiging te accepteren.
+If you are a **Student** in a workspace:
+1. Go to the **Team** page
+2. Click **Invite**
+3. Enter the email address of the person you want to invite
+4. Choose the role: **Mentor** or **Supervisor**
+5. Click **Invite**
 
-### 4. Rollen en Rechten
+The invited person receives an email with a link to accept the invitation.
 
-**STUDENT (Eigenaar):**
-- ✅ Kan planning items aanmaken en verwijderen
-- ✅ Kan notities aanmaken en verwijderen
-- ✅ Kan teamleden uitnodigen
-- ✅ Kan rollen aanpassen
-- ✅ Kan teamleden verwijderen
+### 4. Roles and permissions
+
+**STUDENT:**
+- ✅ Can create/edit/delete planning items
+- ✅ Can create/edit/delete notes
+- ✅ Can invite team members
+- ✅ Can change roles
+- ✅ Can remove members
 
 **MENTOR:**
-- ✅ Kan planning items en notities lezen
-- ✅ Kan feedback/reacties plaatsen
-- ❌ Kan geen items aanmaken of verwijderen
+- ✅ Can read planning items and notes
+- ✅ Can add feedback/comments
+- ❌ Cannot create or delete items
 
-**BEGELEIDER:**
-- ✅ Kan planning items en notities lezen
-- ✅ Kan feedback/reacties plaatsen
-- ❌ Kan geen items aanmaken of verwijderen
+**SUPERVISOR:**
+- ✅ Can read planning items and notes
+- ✅ Can add feedback/comments
+- ❌ Cannot create or delete items
 
-### 5. Planning en Notities
+### 5. Planning and notes
 
-Wanneer je een workspace selecteert:
-- Alle planning items worden gefilterd op de geselecteerde workspace
-- Alle notities worden gefilterd op de geselecteerde workspace
-- Nieuwe items die je aanmaakt worden automatisch gekoppeld aan de huidige workspace
+When you select a workspace:
+- All planning items are filtered to the selected workspace
+- All notes are filtered to the selected workspace
+- New items you create are automatically linked to the current workspace
 
-## Problemen Oplossen
+## Troubleshooting
 
-### Ik zie geen Workspace Selector
+### I don't see the workspace selector
 
-1. Controleer of je ingelogd bent
-2. Ververs de pagina (F5)
-3. Controleer de browser console voor errors (F12)
+1. Check that you are logged in
+2. Refresh the page (F5)
+3. Look in the top bar or in **Settings → Group**
+4. Check the browser console for errors (F12)
 
-### Ik zie "Geen workspaces"
+### I see "No workspaces"
 
-Dit betekent dat je nog geen workspace hebt. Elke gebruiker zou automatisch een persoonlijke workspace moeten hebben. Als dit niet het geval is:
-1. Log uit en log weer in
-2. Als het probleem blijft, neem contact op met de beheerder
+This means you do not have a workspace yet. Every user should automatically have a personal workspace. If not:
+1. Log out and log in again
+2. If the problem remains, contact an administrator
 
-### Ik kan geen teamleden zien
+### I can't see team members
 
-1. Controleer of je een workspace hebt geselecteerd
-2. Ga naar de **Team** pagina
-3. Als je eigenaar bent, zou je alle teamleden moeten zien
+1. Ensure you selected a workspace
+2. Go to the **Team** page
+3. If you are a Student, you should see all members
 
-### Ik kan geen leden uitnodigen
+### I can't invite members
 
-Alleen de eigenaar (Student) van een workspace kan leden uitnodigen. Controleer je rol in de workspace selector.
-
-
-
-
+Only **Student** roles can invite members. Check your role in the workspace selector.

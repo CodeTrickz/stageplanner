@@ -139,11 +139,6 @@ export function DashboardPage() {
     }
   }, [stageHolidaysJson])
 
-  const isWithinStage = (d: string) => {
-    if (!stageStart || !stageEnd) return true
-    return d >= stageStart && d <= stageEnd
-  }
-
   useEffect(() => {
     if (!token || !currentWorkspace?.id) return
     const workspaceId = String(currentWorkspace.id)
@@ -174,8 +169,10 @@ export function DashboardPage() {
     return list
   }, [items])
 
-  const today = yyyyMmDdLocal(new Date())
-  const start = weekStart === 'sunday' ? startOfWeekSunday(new Date()) : startOfWeekMonday(new Date())
+  const now = new Date()
+  const today = yyyyMmDdLocal(now)
+  const nowMinutes = now.getHours() * 60 + now.getMinutes()
+  const start = weekStart === 'sunday' ? startOfWeekSunday(now) : startOfWeekMonday(now)
   const weekStartYmd = yyyyMmDdLocal(start)
   const weekEnd = yyyyMmDdLocal(addDays(start, 6))
 
@@ -190,18 +187,28 @@ export function DashboardPage() {
     const inProgress = all.filter((it) => it.status === 'in_progress').sort(byDateTime)
 
     const stageWorkDates = new Set<string>()
+    const stageWorkEndByDate = new Map<string, number>()
     for (const it of all) {
       const rawTags = (it as { tags?: unknown }).tags ?? it.tagsJson
       if (getStageType(rawTags) === 'work') {
-        if (isWithinStage(it.date) && !holidaySet.has(it.date)) {
-          stageWorkDates.add(it.date)
+        stageWorkDates.add(it.date)
+        const endMatch = /^(\d{1,2}):(\d{2})$/.exec(it.end)
+        if (endMatch) {
+          const minutes = Number(endMatch[1]) * 60 + Number(endMatch[2])
+          const prev = stageWorkEndByDate.get(it.date)
+          stageWorkEndByDate.set(it.date, prev == null ? minutes : Math.max(prev, minutes))
         }
       }
     }
     const plannedStageDays = stageWorkDates.size
-    const workedStageDays = Array.from(stageWorkDates).filter((d) => d <= today).length
+    const workedStageDays = Array.from(stageWorkDates).filter((d) => {
+      if (d < today) return true
+      if (d !== today) return false
+      const endMinutes = stageWorkEndByDate.get(d)
+      return endMinutes != null && endMinutes <= nowMinutes
+    }).length
 
-    const excludedStageDays = Array.from(holidaySet).filter((d) => isWithinStage(d)).length
+    const excludedStageDays = 0
 
     return {
       todayItems,
@@ -213,7 +220,7 @@ export function DashboardPage() {
       workedStageDays,
       excludedStageDays,
     }
-  }, [itemsSorted, today, weekStartYmd, weekEnd, stageStart, stageEnd, holidaySet])
+  }, [itemsSorted, today, nowMinutes, weekStartYmd, weekEnd, stageStart, stageEnd, holidaySet])
 
   return (
     <Box sx={{ display: 'grid', gap: { xs: 1.5, sm: 2 } }}>
@@ -251,9 +258,6 @@ export function DashboardPage() {
               size="small"
               label={`Nog te plannen: ${Math.max(0, 60 - computed.plannedStageDays)}`}
             />
-            {computed.excludedStageDays > 0 && (
-              <Chip size="small" label={`Uitgesloten: ${computed.excludedStageDays}`} />
-            )}
           </Stack>
           <Typography variant="body2" color="text.secondary">
             Periode: {stageStart || 'onbekend'} – {stageEnd || 'onbekend'} •

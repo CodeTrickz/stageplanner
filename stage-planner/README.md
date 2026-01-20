@@ -1,31 +1,31 @@
 # Stage Planner (React)
 
-Frontend voor Stage Planner met meerdere tabbladen:
+Frontend for Stage Planner with workspace‑scoped data and realtime updates, with multiple tabs:
 
-- **Dashboard**: overzicht van vandaag/week/taken + stage voortgang.
-- **Planning**: dagplanning met tijdsindeling (items opslaan, bewerken, verwijderen).
-- **Week**: weekoverzicht met 7 dagen.
-- **Taken**: taken-overzicht met filters.
-- **Bestanden**: uploaden + downloaden (opslag in **IndexedDB** in je browser).
-- **Notities / mail**: tekst + bijlages (kies bijlages uit Bestanden), opslaan, export als **.txt** of **.zip**.
-- **Team**: workspaces en ledenbeheer.
-- **Instellingen**: gebruikersinstellingen (planning, stageperiode, holidays, thema).
-- **Admin**: beheer en logs (alleen admin).
+- **Dashboard**: overview of today/week/tasks + internship progress.
+- **Planning**: day planning with time slots (create/edit/delete items).
+- **Week**: week view (7 days).
+- **Tasks**: task overview with filters.
+- **Files**: upload + download (stored on the server in SQLite).
+- **Notes / mail**: text + attachments (pick from Files), save, export as **.txt** or **.zip**.
+- **Team**: workspaces and member management.
+- **Settings**: user settings (planning, internship period, holidays, theme).
+- **Admin**: management and logs (admin only).
 
-## Starten (Windows)
+## Start (Windows)
 
-Ga naar de map `stage-planner` en run:
+Go to `stage-planner` and run:
 
 ```bash
 npm install
 npm run dev
 ```
 
-Dan opent Vite meestal op `http://localhost:5173`.
+Vite opens at `http://localhost:5173`.
 
 ## Backend (login + planning API)
 
-Er staat ook een simpele backend in `backend/` (Express + SQLite):
+A simple backend is in `backend/` (Express + SQLite):
 
 ```bash
 cd "..\\backend"
@@ -33,21 +33,26 @@ npm install
 npm run dev
 ```
 
-- Backend draait op `http://localhost:3001`
-- Config staat in `backend/env.local` (geen `.env` nodig)
-- Frontend heeft een **Login** pagina op `/login`
-- **Account activatie**: bij registreren wordt een verify-link “gemaild”.
-  - In dev zonder SMTP: check `backend/data/mails.log` voor de link (of console output van backend).
+- Backend runs at `http://localhost:3001`
+- Config is in `backend/env.local` (no `.env` needed)
+- Frontend has a **Login** page at `/login`
+- **Account activation**: on registration a verify link is “emailed”.
+  - In dev without SMTP: check `backend/data/mails.log` (or backend console output).
 
-## Opslag
+## Frontend configuration
 
-Alles wordt lokaal opgeslagen in je browser via **IndexedDB** (Dexie).  
-Wil je “resetten”: verwijder site data in je browser (of gebruik een andere browser/profiel).
+Optional `stage-planner/.env.local`:
+- `VITE_IDLE_LOGOUT_MINUTES` (0 = never, default 30)
+
+## Storage
+
+Planning, notes, and files are stored server‑side (SQLite) and synchronized per workspace.
+Local storage is only used for UI settings and auth state.
 
 ## Tech
 
 - React + TypeScript (Vite)
 - UI: MUI (Material UI)
-- Storage: Dexie (IndexedDB)
+- Storage: server-side API + in-memory state
+- Realtime: Server-Sent Events (SSE)
 - Export: JSZip
-

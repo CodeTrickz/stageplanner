@@ -1,121 +1,115 @@
-# Bijdragen aan Stage Planner
+# Contributing to Stage Planner
 
-Bedankt voor je interesse om bij te dragen aan Stage Planner! Dit document bevat richtlijnen en informatie over hoe je kunt bijdragen.
+Thanks for your interest in contributing to Stage Planner! This document outlines guidelines and information for contributors.
 
-## 📋 Code of Conduct
+## Code of Conduct
 
-We verwachten dat alle contributors respectvol en professioneel zijn. Wees vriendelijk en constructief in alle interacties.
+We expect all contributors to be respectful and professional. Be friendly and constructive in all interactions.
 
-## 🚀 Hoe te Bijdragen
+## How to Contribute
 
 ### Bug Reports
 
-Als je een bug hebt gevonden:
+If you found a bug:
 
-1. Check of er al een [issue](../../issues) bestaat voor deze bug
-2. Als niet, maak een nieuwe issue aan met:
-   - Duidelijke beschrijving van het probleem
-   - Stappen om te reproduceren
-   - Verwachte vs. werkelijke gedrag
-   - Screenshots (indien van toepassing)
-   - Je omgeving (OS, browser, Node versie)
+1. Check if there is already an [issue](../../issues)
+2. If not, open a new issue with:
+   - Clear description of the problem
+   - Steps to reproduce
+   - Expected vs actual behavior
+   - Screenshots (if applicable)
+   - Your environment (OS, browser, Node version)
 
 ### Feature Requests
 
-Voor nieuwe features:
+For new features:
 
-1. Check of er al een [issue](../../issues) bestaat voor deze feature
-2. Maak een nieuwe issue aan met:
-   - Beschrijving van de gewenste feature
-   - Use case / motivatie
-   - Eventuele voorbeelden of mockups
+1. Check if there is already an [issue](../../issues)
+2. Open a new issue with:
+   - Description of the requested feature
+   - Use case / motivation
+   - Examples or mockups (if possible)
 
 ### Pull Requests
 
-1. **Fork de repository**
-2. **Maak een feature branch**
+1. **Fork the repository**
+2. **Create a feature branch**
    ```bash
    git checkout -b feature/amazing-feature
    ```
-3. **Volg de code style**
-   - Gebruik TypeScript strict mode
-   - Volg bestaande code formatting
-   - Voeg comments toe waar nodig
-4. **Test je wijzigingen**
-   - Test lokaal
-   - Zorg dat de build werkt (`npm run build`)
-   - Zorg dat linting slaagt (`npm run lint`)
-5. **Commit je wijzigingen**
+3. **Follow code style**
+   - Use TypeScript strict mode
+   - Follow existing formatting
+   - Add comments where needed
+4. **Test your changes**
+   - Test locally
+   - Ensure build works (`npm run build`)
+   - Ensure linting passes (`npm run lint`)
+5. **Commit your changes**
    ```bash
    git commit -m "feat: add amazing feature"
    ```
-   Gebruik [Conventional Commits](https://www.conventionalcommits.org/):
-   - `feat:` voor nieuwe features
-   - `fix:` voor bug fixes
-   - `docs:` voor documentatie
-   - `style:` voor formatting
-   - `refactor:` voor code refactoring
-   - `test:` voor tests
-   - `chore:` voor andere wijzigingen
-6. **Push naar je fork**
+   Use [Conventional Commits](https://www.conventionalcommits.org/):
+   - `feat:` for new features
+   - `fix:` for bug fixes
+   - `docs:` for documentation
+   - `style:` for formatting
+   - `refactor:` for refactors
+   - `test:` for tests
+   - `chore:` for other changes
+6. **Push to your fork**
    ```bash
    git push origin feature/amazing-feature
    ```
-7. **Open een Pull Request**
-   - Beschrijf duidelijk wat je hebt gewijzigd en waarom
-   - Link naar gerelateerde issues
-   - Voeg screenshots toe voor UI wijzigingen
+7. **Open a Pull Request**
+   - Clearly describe what you changed and why
+   - Link related issues
+   - Add screenshots for UI changes
 
-## 🎨 Code Style
+## Code Style
 
 ### TypeScript
 
-- Gebruik TypeScript strict mode
-- Vermijd `any` types
-- Gebruik expliciete return types voor functies
-- Gebruik interfaces voor object types
+- Use TypeScript strict mode
+- Avoid `any` types
+- Use explicit return types for functions
+- Use interfaces for object types
 
 ### React
 
-- Gebruik function components met hooks
-- Gebruik TypeScript voor props
-- Houd components klein en focused
-- Gebruik meaningful namen
+- Use function components with hooks
+- Use TypeScript for props
+- Keep components small and focused
+- Use meaningful names
 
 ### Naming Conventions
 
 - Components: PascalCase (`MyComponent.tsx`)
 - Functions/variables: camelCase (`myFunction`)
 - Constants: UPPER_SNAKE_CASE (`API_BASE_URL`)
-- Files: kebab-case of PascalCase voor components
+- Files: kebab-case or PascalCase for components
 
-## 🧪 Testing
+## Testing
 
-Voordat je een PR indient:
+Before opening a PR:
 
-- Test je wijzigingen lokaal
-- Zorg dat alle bestaande functionaliteit nog werkt
-- Test op verschillende browsers (indien mogelijk)
-- Zorg dat de CI build slaagt
+- Test changes locally
+- Ensure existing functionality still works
+- Test in multiple browsers if possible
+- Ensure CI passes
 
-## 📝 Documentatie
+## Documentation
 
-- Update README.md als je nieuwe features toevoegt
-- Voeg comments toe bij complexe code
-- Update CHANGELOG.md voor user-facing wijzigingen
+- Update `README.md` when adding features
+- Add comments for complex code
+- Update `CHANGELOG.md` for user-facing changes
 
-## 🔍 Review Proces
+## Review Process
 
-1. Een maintainer zal je PR reviewen
-2. Feedback kan worden gegeven - wees open voor suggesties
-3. Na goedkeuring wordt je PR gemerged
+1. A maintainer will review your PR
+2. Feedback may be provided — be open to suggestions
+3. After approval, your PR will be merged
 
-## ❓ Vragen?
+## Questions
 
-Als je vragen hebt, open een [discussion](../../discussions) of een [issue](../../issues).
-
-Bedankt voor je bijdrage! 🎉
-
-
-
-
+If you have questions, open a [discussion](../../discussions) or an [issue](../../issues).

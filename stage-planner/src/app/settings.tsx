@@ -81,6 +81,13 @@ function clampInt(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, Math.round(n)))
 }
 
+function defaultIdleLogoutMinutes() {
+  const raw = import.meta.env.VITE_IDLE_LOGOUT_MINUTES
+  const parsed = typeof raw === 'string' ? Number(raw) : Number(raw)
+  if (!Number.isFinite(parsed)) return 30
+  return clampInt(parsed, 0, 240)
+}
+
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [mode, setMode] = useState<PaletteMode>('light')
   const [weekStart, setWeekStart] = useState<WeekStart>('monday')
@@ -102,7 +109,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [errorLoggingEnabled, setErrorLoggingEnabled] = useState(true)
   const [errorLogRetentionDays, setErrorLogRetentionDays] = useState(14)
   const [errorLogMaxEntries, setErrorLogMaxEntries] = useState(500)
-  const [idleLogoutMinutes, setIdleLogoutMinutes] = useState(30)
+  const [idleLogoutMinutes, setIdleLogoutMinutes] = useState(() => defaultIdleLogoutMinutes())
 
   useEffect(() => {
     try {

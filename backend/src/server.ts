@@ -128,6 +128,13 @@ function buildVerifyUrls(rawToken: string) {
   return { appVerifyUrl, apiVerifyUrl }
 }
 
+function buildResetUrls(rawToken: string) {
+  const enc = encodeURIComponent(rawToken)
+  const appResetUrl = `${getPublicAppUrl()}/reset?token=${enc}`
+  const apiResetUrl = `${getPublicApiUrl()}/auth/reset-password?token=${enc}`
+  return { appResetUrl, apiResetUrl }
+}
+
 // Load env from backend/env.local if it exists (no dotfile needed)
 dotenv.config({ path: path.resolve(__dirname, '..', 'env.local') })
 
@@ -1114,6 +1121,55 @@ app.post('/auth/resend-verify', rlAuthIp, rlVerifyIp, asyncHandler(async (req, r
   return res.json({ ok: true, ...(isProd ? {} : { sent: true }) })
 }))
 
+const forgotPasswordSchema = z.object({ email: z.string().email() })
+app.post('/auth/forgot-password', rlAuthIp, rlVerifyIp, asyncHandler(async (req, res) => {
+  const { email } = parseBody(req, forgotPasswordSchema)
+  const user = db.findUserByEmail(email)
+  const isProd = process.env.NODE_ENV === 'production'
+
+  if (!user || !user.emailVerified) {
+    // Do not leak account existence
+    return res.json({ ok: true, ...(isProd ? {} : { sent: false, reason: 'not_found_or_unverified' }) })
+  }
+
+  const rawToken = crypto.randomBytes(32).toString('hex')
+  const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex')
+  const expiresAt = Date.now() + 1000 * 60 * 60 // 1 hour
+
+  db.setPasswordResetForEmail(email, tokenHash, expiresAt)
+
+  const { appResetUrl, apiResetUrl } = buildResetUrls(rawToken)
+  await sendMail({
+    to: email,
+    subject: 'Stage Planner: reset je wachtwoord',
+    text: `Reset je wachtwoord:\n${appResetUrl}\n\nAPI endpoint (POST):\n${apiResetUrl}\n\nDeze link is 1 uur geldig.`,
+  })
+
+  return res.json({ ok: true, ...(isProd ? {} : { sent: true }) })
+}))
+
+const resetPasswordSchema = z
+  .object({
+    token: z.string().min(10).max(5000),
+    password: z.string().min(10).max(200),
+    passwordConfirm: z.string().min(10).max(200),
+  })
+  .refine((d) => d.password === d.passwordConfirm, { message: 'password_mismatch' })
+  .refine((d) => isStrongPassword(d.password), { message: 'weak_password' })
+
+app.post('/auth/reset-password', rlAuthIp, rlVerifyIp, asyncHandler(async (req, res) => {
+  const { token, password } = parseBody(req, resetPasswordSchema)
+  const tokenHash = sha256Hex(token)
+  const user = db.findUserByPasswordResetTokenHash(tokenHash)
+  if (!user) return res.status(400).json({ error: 'invalid_or_expired_token' })
+
+  const hash = await bcrypt.hash(password, 10)
+  db.setUserPassword(user.id, hash)
+  db.clearPasswordResetForUser(user.id)
+  audit(req, 'account.password_reset', 'user', user.id)
+  return res.json({ ok: true })
+}))
+
 app.post('/auth/resend-verification', rlAuthIp, rlVerifyIp, asyncHandler(async (req, res) => {
   const { email } = parseBody(req, resendSchema)
 
@@ -1330,7 +1386,8 @@ const planningUpsertSchema = z.object({
   end: z.string().regex(/^\d{2}:\d{2}$/),
   title: z.string().min(1).max(200),
   notes: z.string().max(10000).optional().nullable(),
-  tagsJson: z.string().max(2000).optional(),
+  tagsJson: z.union([z.string().max(2000), z.array(z.string().max(64)).max(50)]).optional(),
+  tags: z.string().max(2000).optional(),
   priority: z.enum(['low', 'medium', 'high']).default('medium'),
   status: z.enum(['todo', 'in_progress', 'done']).default('todo'),
 })
@@ -1345,6 +1402,30 @@ app.post('/planning', requireAuth, asyncHandler(async (req, res) => {
   const parsed = planningUpsertSchemaWithWorkspace.safeParse(req.body)
   if (!parsed.success) return res.status(400).json({ error: 'invalid_input' })
   const d = parsed.data
+
+  const normalizeTagsJson = (input: unknown, fallback: string) => {
+    if (Array.isArray(input)) {
+      return JSON.stringify(input.filter((t) => typeof t === 'string'))
+    }
+    if (typeof input === 'string') {
+      const trimmed = input.trim()
+      if (!trimmed) return '[]'
+      try {
+        const parsedJson = JSON.parse(trimmed)
+        if (Array.isArray(parsedJson)) {
+          return JSON.stringify(parsedJson.filter((t) => typeof t === 'string'))
+        }
+      } catch {
+        // ignore - will parse as comma-separated below
+      }
+      const parts = trimmed
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+      return JSON.stringify(parts)
+    }
+    return fallback
+  }
 
   // Determine workspaceId
   let workspaceId = d.workspaceId
@@ -1371,6 +1452,10 @@ app.post('/planning', requireAuth, asyncHandler(async (req, res) => {
       return res.status(403).json({ error: 'insufficient_permissions' })
     }
 
+    const normalizedTagsJson = normalizeTagsJson(
+      d.tagsJson ?? d.tags,
+      existing.tagsJson ?? '[]',
+    )
     const item = db.upsertPlanning(u.id, {
       id: d.id,
       groupId: workspaceId,
@@ -1379,7 +1464,7 @@ app.post('/planning', requireAuth, asyncHandler(async (req, res) => {
       end: d.end,
       title: d.title,
       notes: d.notes ?? null,
-      tagsJson: d.tagsJson ?? existing.tagsJson ?? '[]',
+      tagsJson: normalizedTagsJson,
       priority: d.priority,
       status: d.status,
     })
@@ -1393,6 +1478,7 @@ app.post('/planning', requireAuth, asyncHandler(async (req, res) => {
     return res.status(403).json({ error: 'only_students_can_create' })
   }
 
+  const normalizedTagsJson = normalizeTagsJson(d.tagsJson ?? d.tags, '[]')
   const item = db.upsertPlanning(u.id, {
     groupId: workspaceId,
     date: d.date,
@@ -1400,7 +1486,7 @@ app.post('/planning', requireAuth, asyncHandler(async (req, res) => {
     end: d.end,
     title: d.title,
     notes: d.notes ?? null,
-    tagsJson: d.tagsJson ?? '[]',
+    tagsJson: normalizedTagsJson,
     priority: d.priority,
     status: d.status,
   })

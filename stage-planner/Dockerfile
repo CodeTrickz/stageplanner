@@ -1,6 +1,9 @@
 FROM node:20-bookworm-slim AS build
 WORKDIR /app
 
+ARG VITE_IDLE_LOGOUT_MINUTES
+ENV VITE_IDLE_LOGOUT_MINUTES=${VITE_IDLE_LOGOUT_MINUTES}
+
 COPY package.json package-lock.json ./
 RUN npm ci
 

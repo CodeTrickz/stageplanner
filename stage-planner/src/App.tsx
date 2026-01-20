@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from './app/AppShell'
 import { RequireAuth } from './auth/RequireAuth'
 import { LoginPage } from './pages/LoginPage'
+import { ResetPasswordPage } from './pages/ResetPasswordPage'
 import { VerifyPage } from './pages/VerifyPage'
 import { AcceptInvitePage } from './pages/AcceptInvitePage'
 import { AdminPage } from './pages/AdminPage'
@@ -23,6 +24,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Navigate to={startPage || '/dashboard'} replace />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/reset" element={<ResetPasswordPage />} />
         <Route path="/verify" element={<VerifyPage />} />
         <Route path="/workspace/accept" element={<AcceptInvitePage />} />
 

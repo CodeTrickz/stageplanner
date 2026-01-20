@@ -1,68 +1,61 @@
 # Security Policy
 
-## 🔒 Supported Versions
+## Supported Versions
 
-We ondersteunen security updates voor de laatste stabiele versie van Stage Planner.
+We provide security updates for the latest stable version of Stage Planner.
 
-| Version | Supported          |
-| ------- | ------------------ |
-| Latest  | :white_check_mark: |
-| < Latest| :x:                |
+| Version  | Supported |
+| -------- | --------- |
+| Latest   | ✅        |
+| < Latest | ❌        |
 
-## 🚨 Reporting a Vulnerability
+## Reporting a Vulnerability
 
-Als je een security vulnerability hebt gevonden, **open GEEN public issue**. In plaats daarvan:
+If you find a security vulnerability, **do NOT open a public issue**. Instead:
 
-1. **Email**: Stuur een email naar de maintainers (voeg email toe indien beschikbaar)
-2. **GitHub Security Advisory**: Gebruik [GitHub's private vulnerability reporting](https://github.com/OWNER/REPO/security/advisories/new) indien beschikbaar
+1. **Email**: contact the maintainers (add an email if available)
+2. **GitHub Security Advisory**: use [GitHub's private vulnerability reporting](https://github.com/CodeTrickz/stageplanner/security/advisories/new) if available
 
-### Wat te Includeren
+### What to include
 
-- Beschrijving van de vulnerability
-- Stappen om te reproduceren
-- Potentiële impact
-- Suggesties voor fix (indien mogelijk)
+- Description of the vulnerability
+- Steps to reproduce
+- Potential impact
+- Suggested fix (if possible)
 
-### Response Tijd
+### Response time
 
-- We proberen binnen **48 uur** te reageren
-- We houden je op de hoogte van de status
-- Na fix wordt een security advisory gepubliceerd (indien van toepassing)
+- We aim to respond within **48 hours**
+- We will keep you updated on the status
+- A security advisory will be published after a fix (if applicable)
 
-## 🛡️ Security Best Practices
+## Security Best Practices
 
-### Voor Developers
+### For developers
 
-- Gebruik altijd de laatste dependencies
-- Run `npm audit` regelmatig
-- Gebruik environment variables voor secrets
-- Valideer alle user input
-- Gebruik parameterized queries (SQL injection prevention)
-- Implementeer rate limiting waar nodig
+- Keep dependencies up to date
+- Run `npm audit` regularly
+- Use environment variables for secrets
+- Validate all user input
+- Use parameterized queries (SQL injection prevention)
+- Implement rate limiting where needed
 
-### Voor Users
+### For users
 
-- Gebruik sterke wachtwoorden
-- Houd je JWT_SECRET geheim
-- Gebruik HTTPS in production
-- Update regelmatig naar de laatste versie
+- Use strong passwords
+- Keep your `JWT_SECRET` private
+- Use HTTPS in production
+- Update regularly to the latest version
 
-## 🔐 Known Security Considerations
+## Known Security Considerations
 
-- JWT tokens worden gebruikt voor authenticatie - zorg voor sterke `JWT_SECRET`
-- SQLite database - overweeg encryptie voor gevoelige data
-- CORS is geconfigureerd - pas `CORS_ORIGIN` aan voor production
-- Email verificatie - configureer SMTP voor production gebruik
+- JWT tokens are used for authentication — use a strong `JWT_SECRET`
+- SQLite database — consider encryption for sensitive data
+- CORS is configured — adjust `CORS_ORIGIN` for production
+- Email verification — configure SMTP for production use
 
-## 📚 Security Resources
+## Security Resources
 
 - [OWASP Top 10](https://owasp.org/www-project-top-ten/)
 - [Node.js Security Best Practices](https://nodejs.org/en/docs/guides/security/)
 - [Express Security Best Practices](https://expressjs.com/en/advanced/best-practice-security.html)
-
-
-
-
-
-
-

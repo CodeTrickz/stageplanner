@@ -15,6 +15,8 @@ export type DbUser = {
   groupId: string | null
   emailVerificationTokenHash: string | null
   emailVerificationExpiresAt: number | null
+  passwordResetTokenHash: string | null
+  passwordResetExpiresAt: number | null
   createdAt: number
   updatedAt: number
 }
@@ -228,7 +230,11 @@ function openSqlite() {
   const p = dbPath()
   ensureDir(path.dirname(p))
   const db = new Database(p)
-  db.pragma('journal_mode = WAL')
+  try {
+    db.pragma('journal_mode = WAL')
+  } catch {
+    // If WAL fails (e.g. SQLITE_IOERR_SHMSIZE), continue with default journal mode.
+  }
   db.exec(`
     CREATE TABLE IF NOT EXISTS groups (
       id TEXT PRIMARY KEY,
@@ -252,6 +258,8 @@ function openSqlite() {
       group_id TEXT,
       email_verification_token_hash TEXT,
       email_verification_expires_at INTEGER,
+      password_reset_token_hash TEXT,
+      password_reset_expires_at INTEGER,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
@@ -345,6 +353,8 @@ function openSqlite() {
   addCol('group_id', 'group_id TEXT')
   addCol('email_verification_token_hash', 'email_verification_token_hash TEXT')
   addCol('email_verification_expires_at', 'email_verification_expires_at INTEGER')
+  addCol('password_reset_token_hash', 'password_reset_token_hash TEXT')
+  addCol('password_reset_expires_at', 'password_reset_expires_at INTEGER')
   db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_unique ON users(username);`)
 
   // Ensure join_code exists for groups (migrations)
@@ -945,6 +955,8 @@ export const db = {
     groupId?: string | null
     emailVerificationTokenHash?: string | null
     emailVerificationExpiresAt?: number | null
+    passwordResetTokenHash?: string | null
+    passwordResetExpiresAt?: number | null
     isAdmin?: boolean
     emailVerified?: boolean
   }): DbUser => {
@@ -961,6 +973,8 @@ export const db = {
       groupId: input.groupId ?? null,
       emailVerificationTokenHash: input.emailVerificationTokenHash ?? null,
       emailVerificationExpiresAt: input.emailVerificationExpiresAt ?? null,
+      passwordResetTokenHash: input.passwordResetTokenHash ?? null,
+      passwordResetExpiresAt: input.passwordResetExpiresAt ?? null,
       createdAt: t,
       updatedAt: t,
     }
@@ -976,9 +990,9 @@ export const db = {
       sqliteDb
         .prepare(
           `INSERT INTO users
-             (id, username, first_name, last_name, email, password_hash, is_admin, email_verified, group_id, email_verification_token_hash, email_verification_expires_at, created_at, updated_at)
+             (id, username, first_name, last_name, email, password_hash, is_admin, email_verified, group_id, email_verification_token_hash, email_verification_expires_at, password_reset_token_hash, password_reset_expires_at, created_at, updated_at)
            VALUES
-             (@id, @username, @firstName, @lastName, @email, @passwordHash, @isAdmin, @emailVerified, @groupId, @emailVerificationTokenHash, @emailVerificationExpiresAt, @createdAt, @updatedAt)`,
+             (@id, @username, @firstName, @lastName, @email, @passwordHash, @isAdmin, @emailVerified, @groupId, @emailVerificationTokenHash, @emailVerificationExpiresAt, @passwordResetTokenHash, @passwordResetExpiresAt, @createdAt, @updatedAt)`,
         )
         .run({
           id: user.id,
@@ -992,6 +1006,8 @@ export const db = {
           groupId: user.groupId,
           emailVerificationTokenHash: user.emailVerificationTokenHash,
           emailVerificationExpiresAt: user.emailVerificationExpiresAt,
+          passwordResetTokenHash: user.passwordResetTokenHash,
+          passwordResetExpiresAt: user.passwordResetExpiresAt,
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
         })
@@ -1048,6 +1064,8 @@ export const db = {
              group_id as groupId,
              email_verification_token_hash as emailVerificationTokenHash,
              email_verification_expires_at as emailVerificationExpiresAt,
+             password_reset_token_hash as passwordResetTokenHash,
+             password_reset_expires_at as passwordResetExpiresAt,
              created_at as createdAt,
              updated_at as updatedAt
            FROM users WHERE email = ?`,
@@ -1075,6 +1093,8 @@ export const db = {
              group_id as groupId,
              email_verification_token_hash as emailVerificationTokenHash,
              email_verification_expires_at as emailVerificationExpiresAt,
+             password_reset_token_hash as passwordResetTokenHash,
+             password_reset_expires_at as passwordResetExpiresAt,
              created_at as createdAt,
              updated_at as updatedAt
            FROM users WHERE username = ?`,
@@ -1102,6 +1122,8 @@ export const db = {
              group_id as groupId,
              email_verification_token_hash as emailVerificationTokenHash,
              email_verification_expires_at as emailVerificationExpiresAt,
+             password_reset_token_hash as passwordResetTokenHash,
+             password_reset_expires_at as passwordResetExpiresAt,
              created_at as createdAt,
              updated_at as updatedAt
            FROM users WHERE id = ?`,
@@ -1128,6 +1150,8 @@ export const db = {
              group_id as groupId,
              email_verification_token_hash as emailVerificationTokenHash,
              email_verification_expires_at as emailVerificationExpiresAt,
+             password_reset_token_hash as passwordResetTokenHash,
+             password_reset_expires_at as passwordResetExpiresAt,
              created_at as createdAt,
              updated_at as updatedAt
            FROM users
@@ -1162,6 +1186,8 @@ export const db = {
              group_id as groupId,
              email_verification_token_hash as emailVerificationTokenHash,
              email_verification_expires_at as emailVerificationExpiresAt,
+             password_reset_token_hash as passwordResetTokenHash,
+             password_reset_expires_at as passwordResetExpiresAt,
              created_at as createdAt,
              updated_at as updatedAt
            FROM users WHERE id = ?`,
@@ -1320,6 +1346,91 @@ export const db = {
       ...s.users[idx],
       emailVerificationTokenHash: tokenHash,
       emailVerificationExpiresAt: expiresAt,
+      updatedAt: t,
+    }
+    writeJson(s)
+    return true
+  },
+
+  setPasswordResetForEmail: (email: string, tokenHash: string, expiresAt: number): boolean => {
+    const t = now()
+    if (sqliteDb) {
+      const info = sqliteDb
+        .prepare(
+          `UPDATE users
+           SET password_reset_token_hash=?, password_reset_expires_at=?, updated_at=?
+           WHERE email=? AND email_verified=1`,
+        )
+        .run(tokenHash, expiresAt, t, email)
+      return info.changes > 0
+    }
+    const s = readJson()
+    const idx = s.users.findIndex((u) => u.email === email && u.emailVerified === 1)
+    if (idx < 0) return false
+    s.users[idx] = {
+      ...s.users[idx],
+      passwordResetTokenHash: tokenHash,
+      passwordResetExpiresAt: expiresAt,
+      updatedAt: t,
+    }
+    writeJson(s)
+    return true
+  },
+
+  findUserByPasswordResetTokenHash: (tokenHash: string): DbUser | null => {
+    const t = now()
+    if (sqliteDb) {
+      const user = sqliteDb
+        .prepare(
+          `SELECT
+             id,
+             username,
+             first_name as firstName,
+             last_name as lastName,
+             email,
+             password_hash as passwordHash,
+             is_admin as isAdmin,
+             email_verified as emailVerified,
+             group_id as groupId,
+             email_verification_token_hash as emailVerificationTokenHash,
+             email_verification_expires_at as emailVerificationExpiresAt,
+             password_reset_token_hash as passwordResetTokenHash,
+             password_reset_expires_at as passwordResetExpiresAt,
+             created_at as createdAt,
+             updated_at as updatedAt
+           FROM users WHERE password_reset_token_hash = ?`,
+        )
+        .get(tokenHash) as DbUser | undefined
+      if (!user) return null
+      if (!user.passwordResetExpiresAt || user.passwordResetExpiresAt < t) return null
+      return user
+    }
+    const s = readJson()
+    const u = s.users.find((user) => user.passwordResetTokenHash === tokenHash)
+    if (!u) return null
+    if (!u.passwordResetExpiresAt || u.passwordResetExpiresAt < t) return null
+    return u
+  },
+
+  clearPasswordResetForUser: (userId: string): boolean => {
+    const t = now()
+    if (sqliteDb) {
+      const info = sqliteDb
+        .prepare(
+          `UPDATE users
+           SET password_reset_token_hash=NULL, password_reset_expires_at=NULL, updated_at=?
+           WHERE id=?`,
+        )
+        .run(t, userId)
+      return info.changes > 0
+    }
+    const s = readJson()
+    const idx = s.users.findIndex((u) => u.id === userId)
+    if (idx < 0) return false
+    s.users[idx] = {
+      ...s.users[idx],
+      passwordResetTokenHash: null,
+      passwordResetExpiresAt: null,
       updatedAt: t,
     }
     writeJson(s)

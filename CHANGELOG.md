@@ -9,12 +9,15 @@
 - Internship day tracking (workday vs home) with dashboard progress
 - Forgot password flow with reset page
 - Idle logout configuration via `VITE_IDLE_LOGOUT_MINUTES`
+- Server-side cache with ETag/If-None-Match for planning, notes, and files
+- Cache smoke test script (`testscripts/cache-smoke.sh`)
 
 ### Changed
 - Files are stored server-side (SQLite BLOBs)
 - Notes sharing UI removed
 - Week planning cards made more readable
 - Stage workday progress counts only after the time slot has passed
+- Cache TTL configurable via `CACHE_TTL_SECONDS` (default 30s)
 
 ### Fixed
 - Internship progress on dashboard works even with mixed tag formats

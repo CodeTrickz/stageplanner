@@ -7,6 +7,7 @@ import bcrypt from 'bcryptjs'
 import { ZodError, z } from 'zod'
 import { getUser, getUserFromToken, requireAuth, signAccessToken } from './auth'
 import { db, type DbPlanningItem, type DbNote, type DbFile } from './db'
+import { buildCacheKey, maybeHandleCachedResponse, storeCacheAndSend, invalidateWorkspaceCache } from './cache'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { sendMail } from './mail'
@@ -922,6 +923,9 @@ app.get('/files', requireAuth, asyncHandler(async (req, res) => {
     const role = db.getMembershipRole(u.id, workspaceId)
     if (!role) return res.status(403).json({ error: 'not_member' })
 
+    const cacheKey = buildCacheKey({ endpoint: 'files', workspaceId, query: {} })
+    if (maybeHandleCachedResponse(req, res, cacheKey)) return
+
     const files = db.listFilesForWorkspace(workspaceId)
     // Return files without data (too large for JSON)
     const filesWithoutData = files.map(f => ({
@@ -936,7 +940,7 @@ app.get('/files', requireAuth, asyncHandler(async (req, res) => {
       createdAt: f.createdAt,
       updatedAt: f.updatedAt,
     }))
-    return res.json({ files: filesWithoutData, workspaceId })
+    return storeCacheAndSend(req, res, cacheKey, workspaceId, { files: filesWithoutData, workspaceId })
   }
 
   // Legacy: list all files for user
@@ -1032,6 +1036,7 @@ app.post('/files', requireAuth, asyncHandler(async (req, res) => {
   })
 
   audit(req, 'file.upload', 'file', file.id, { workspaceId: finalWorkspaceId, name: file.name, size: file.size })
+  if (file.workspaceId) invalidateWorkspaceCache(file.workspaceId)
   if (file.workspaceId) broadcastWorkspace(file.workspaceId, 'files')
   return res.json({
     file: {
@@ -1072,6 +1077,7 @@ app.delete('/files/:id', requireAuth, asyncHandler(async (req, res) => {
   if (!deleted) return res.status(404).json({ error: 'not_found' })
 
   audit(req, 'file.delete', 'file', fileId, { workspaceId: file.workspaceId, name: file.name })
+  if (file.workspaceId) invalidateWorkspaceCache(file.workspaceId)
   if (file.workspaceId) broadcastWorkspace(file.workspaceId, 'files')
   return res.json({ ok: true })
 }))
@@ -1219,8 +1225,11 @@ app.get('/notes', requireAuth, asyncHandler(async (req, res) => {
     const role = db.getMembershipRole(u.id, workspaceId)
     if (!role) return res.status(403).json({ error: 'not_member' })
 
+    const cacheKey = buildCacheKey({ endpoint: 'notes', workspaceId, query: {} })
+    if (maybeHandleCachedResponse(req, res, cacheKey)) return
+
     const notes = db.listNotesForGroup(workspaceId)
-    return res.json({ notes, workspaceId })
+    return storeCacheAndSend(req, res, cacheKey, workspaceId, { notes, workspaceId })
   }
 
   // Legacy: list all workspaces user is member of
@@ -1273,6 +1282,7 @@ app.post('/notes', requireAuth, asyncHandler(async (req, res) => {
 
   const note = db.upsertNote(u.id, { id: d.id, subject: d.subject, body: d.body, groupId: workspaceId })
   audit(req, d.id ? 'note.update' : 'note.create', 'note', note.id, { workspaceId, subject: note.subject })
+  invalidateWorkspaceCache(workspaceId)
   broadcastWorkspace(workspaceId, 'notes')
   return res.json({ note, workspaceId })
 }))
@@ -1293,6 +1303,7 @@ app.delete('/notes/:id', requireAuth, (req, res) => {
   const ok = db.deleteNote(u.id, id)
   if (!ok) return res.status(404).json({ error: 'not_found' })
   audit(req, 'note.delete', 'note', id, { workspaceId: n.groupId })
+  if (n.groupId) invalidateWorkspaceCache(n.groupId)
   if (n.groupId) broadcastWorkspace(n.groupId, 'notes')
   return res.json({ ok: true })
 })
@@ -1360,8 +1371,11 @@ app.get('/planning', requireAuth, asyncHandler(async (req, res) => {
     const role = db.getMembershipRole(u.id, workspaceId)
     if (!role) return res.status(403).json({ error: 'not_member' })
 
+    const cacheKey = buildCacheKey({ endpoint: 'planning', workspaceId, query: { date } })
+    if (maybeHandleCachedResponse(req, res, cacheKey)) return
+
     const items = db.listPlanningForGroup(workspaceId, date)
-    return res.json({ items, workspaceId })
+    return storeCacheAndSend(req, res, cacheKey, workspaceId, { items, workspaceId })
   }
 
   // Legacy: list all workspaces user is member of
@@ -1469,6 +1483,7 @@ app.post('/planning', requireAuth, asyncHandler(async (req, res) => {
       status: d.status,
     })
     audit(req, 'planning.update', 'planning', item.id, { workspaceId, date: item.date })
+    invalidateWorkspaceCache(workspaceId)
     broadcastWorkspace(workspaceId, 'planning')
     return res.json({ item, workspaceId })
   }
@@ -1491,6 +1506,7 @@ app.post('/planning', requireAuth, asyncHandler(async (req, res) => {
     status: d.status,
   })
   audit(req, 'planning.create', 'planning', item.id, { workspaceId, date: item.date })
+  invalidateWorkspaceCache(workspaceId)
   broadcastWorkspace(workspaceId, 'planning')
   return res.json({ item, workspaceId })
 }))
@@ -1511,6 +1527,7 @@ app.delete('/planning/:id', requireAuth, asyncHandler(async (req, res) => {
   const ok = db.deletePlanning(u.id, id)
   if (!ok) return res.status(404).json({ error: 'not_found' })
   audit(req, 'planning.delete', 'planning', id, { workspaceId: p.groupId })
+  if (p.groupId) invalidateWorkspaceCache(p.groupId)
   if (p.groupId) broadcastWorkspace(p.groupId, 'planning')
   return res.json({ ok: true })
 }))

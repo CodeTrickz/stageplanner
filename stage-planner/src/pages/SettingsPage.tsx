@@ -3,8 +3,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { apiFetch } from '../api/client'
 import { useSettings, type StartPage } from '../app/settings'
 import { useAuth } from '../auth/auth'
+import { WorkspaceSelector } from '../components/WorkspaceSelector'
+import { useWorkspace } from '../hooks/useWorkspace'
 
 export function SettingsPage() {
+  const { currentWorkspace } = useWorkspace()
   const {
     mode,
     toggleMode,
@@ -491,10 +494,13 @@ export function SettingsPage() {
               </Stack>
               <TextField
                 label="Groep"
-                value={''}
+                value={currentWorkspace?.name || ''}
                 disabled
                 helperText="Je actieve groep bepaalt welke cloud data je ziet. Je persoonlijke groep = je eigen planner."
               />
+              <Box sx={{ maxWidth: 360 }}>
+                <WorkspaceSelector />
+              </Box>
               <Stack direction="row" spacing={1} justifyContent="flex-end">
                 <Button variant="outlined" disabled={busy} onClick={() => void refreshMe()}>
                   Refresh

@@ -135,10 +135,6 @@ class AppDB extends Dexie {
         planning: '++id, date, start, end, updatedAt, priority, status, workspaceId',
         notes: '++id, updatedAt, subject, workspaceId',
       })
-      .upgrade(async (_tx) => {
-        // workspaceId will be set when items are synced from backend
-        // No need to migrate existing items - they'll get workspaceId on next sync
-      })
       .upgrade(async (tx) => {
         const filesTable = tx.table('files')
         const metaTable = tx.table('fileMeta')
@@ -285,21 +281,16 @@ class AppDB extends Dexie {
       })
 
     // v9: Add workspaceId to planning and notes for workspace filtering
-    this.version(9)
-      .stores({
-        files:
-          '++id, ownerUserId, createdAt, name, type, size, groupKey, version, [ownerUserId+createdAt], [ownerUserId+groupKey]',
-        fileMeta: '&groupKey, ownerUserId, updatedAt, folder',
-        ocr: '&fileId, ownerUserId, updatedAt, [ownerUserId+fileId]',
-        links: '++id, ownerUserId, fromType, fromId, toType, toKey, createdAt, [ownerUserId+fromId]',
-        planning: '++id, ownerUserId, workspaceId, date, start, end, updatedAt, priority, status, tagsJson, remoteId, [ownerUserId+date], [workspaceId+date]',
-        notes: '++id, ownerUserId, workspaceId, updatedAt, subject, remoteId',
-        errors: '++id, createdAt, level, source',
-      })
-      .upgrade(async (_tx) => {
-        // workspaceId will be set when items are synced from backend
-        // No need to migrate existing items - they'll get workspaceId on next sync
-      })
+    this.version(9).stores({
+      files:
+        '++id, ownerUserId, createdAt, name, type, size, groupKey, version, [ownerUserId+createdAt], [ownerUserId+groupKey]',
+      fileMeta: '&groupKey, ownerUserId, updatedAt, folder',
+      ocr: '&fileId, ownerUserId, updatedAt, [ownerUserId+fileId]',
+      links: '++id, ownerUserId, fromType, fromId, toType, toKey, createdAt, [ownerUserId+fromId]',
+      planning: '++id, ownerUserId, workspaceId, date, start, end, updatedAt, priority, status, tagsJson, remoteId, [ownerUserId+date], [workspaceId+date]',
+      notes: '++id, ownerUserId, workspaceId, updatedAt, subject, remoteId',
+      errors: '++id, createdAt, level, source',
+    })
 
     // v10: Add workspaceId and remoteId to files for workspace sync
     this.version(10)

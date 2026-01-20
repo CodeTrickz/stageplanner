@@ -141,9 +141,6 @@ export function NotesPage() {
   const [preview, setPreview] = useState<StoredFile | null>(null)
   const [notePreviewOpen, setNotePreviewOpen] = useState(false)
   const [htmlMode, setHtmlMode] = useState(false)
-  const [shareEmail, setShareEmail] = useState('')
-  const [sharePerm, setSharePerm] = useState<'read' | 'write'>('read')
-  const [shareStatus, setShareStatus] = useState<string | null>(null)
   const [refreshTick, setRefreshTick] = useState(0)
 
   useWorkspaceEvents((evt) => {
@@ -546,42 +543,6 @@ export function NotesPage() {
                 </Button>
                 <Button
                   variant="outlined"
-                  startIcon={<PreviewIcon />}
-                  onClick={async () => {
-                    if (!token) {
-                      setShareStatus('Login vereist om te delen.')
-                      return
-                    }
-                    if (!draft.id) {
-                      setShareStatus('Eerst opslaan.')
-                      return
-                    }
-                    if (!shareEmail) {
-                      setShareStatus('Vul email in.')
-                      return
-                    }
-                    try {
-                      await apiFetch('/shares', {
-                        method: 'POST',
-                        token: token || undefined,
-                        headers: { 'content-type': 'application/json' },
-                        body: JSON.stringify({
-                          resourceType: 'note',
-                          resourceId: draft.id,
-                          granteeEmail: shareEmail,
-                          permission: sharePerm,
-                        }),
-                      })
-                      setShareStatus('Gedeeld!')
-                    } catch (e) {
-                      setShareStatus(e instanceof Error ? e.message : 'share_failed')
-                    }
-                  }}
-                >
-                  Delen
-                </Button>
-                <Button
-                  variant="outlined"
                   startIcon={<DownloadIcon />}
                   onClick={exportTxt}
                 >
@@ -633,35 +594,6 @@ export function NotesPage() {
                 <RichTextEditor value={draft.body} onChange={(html) => setDraft((d) => ({ ...d, body: html }))} />
               )}
             </Box>
-
-            <Paper variant="outlined" sx={{ p: { xs: 1, sm: 1.5 } }}>
-              <Stack spacing={1}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 900 }}>
-                  Delen (cloud)
-                </Typography>
-                <Stack direction="column" spacing={{ xs: 1.5, sm: 2 }} sx={{ '@media (min-width:600px)': { flexDirection: 'row', alignItems: 'center' } }}>
-                  <TextField
-                    label="Email collega"
-                    value={shareEmail}
-                    onChange={(e) => setShareEmail(e.target.value)}
-                    fullWidth
-                  />
-                  <TextField
-                    select
-                    label="Rechten"
-                    value={sharePerm}
-                    onChange={(e) => setSharePerm(e.target.value as 'read' | 'write')}
-                    sx={{ minWidth: 140 }}
-                  >
-                    <MenuItem value="read">Read</MenuItem>
-                    <MenuItem value="write">Write</MenuItem>
-                  </TextField>
-                </Stack>
-                {shareStatus && (
-                  <Alert severity={shareStatus === 'Gedeeld!' ? 'success' : 'info'}>{shareStatus}</Alert>
-                )}
-              </Stack>
-            </Paper>
 
             <TextField
               select

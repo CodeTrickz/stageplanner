@@ -98,7 +98,7 @@ function DraggableItem({
   const id = `item-${it.id}`
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id })
   const top = li.startM
-  const height = Math.max(18, li.endM - li.startM)
+  const height = Math.max(24, li.endM - li.startM)
   const avail = `calc(100% - ${labelWidth + 8}px)`
   const widthCalc = `calc((${avail}) / ${li.colCount} - 6px)`
   const leftCalc = `calc(${labelWidth}px + (${avail}) * ${li.col} / ${li.colCount})`
@@ -133,14 +133,19 @@ function DraggableItem({
         overflow: 'hidden',
         transform: transform ? CSS.Translate.toString(transform) : undefined,
         userSelect: 'none',
+        textShadow: '0 1px 2px rgba(0,0,0,0.45)',
       }}
       {...listeners}
       {...attributes}
     >
-      <Typography variant="caption" sx={{ opacity: 0.9 }}>
+      <Typography variant="caption" sx={{ opacity: 0.9, fontSize: '0.7rem', lineHeight: 1.1 }}>
         {formatTimeRange(it.start, it.end, { format: timeFormat ?? '24h' })}
       </Typography>
-      <Typography sx={{ fontWeight: 900, lineHeight: 1.2 }} noWrap>
+      <Typography
+        sx={{ fontWeight: 800, lineHeight: 1.2, fontSize: '0.78rem' }}
+        noWrap
+        title={it.title}
+      >
         {it.title}
       </Typography>
     </Box>

@@ -25,9 +25,17 @@ import { addDays, formatTimeRange, startOfWeekMonday, startOfWeekSunday, yyyyMmD
 const STAGE_WORK_TAG = 'stage:work'
 const STAGE_HOME_TAG = 'stage:home'
 
-function getStageType(tagsJson: string | undefined) {
+function getStageType(rawTags: unknown) {
   try {
-    const tags = JSON.parse(tagsJson || '[]') as string[]
+    let tags: string[] = []
+    if (Array.isArray(rawTags)) {
+      tags = rawTags.filter((t) => typeof t === 'string') as string[]
+    } else if (typeof rawTags === 'string') {
+      const trimmed = rawTags.trim()
+      if (trimmed) {
+        tags = JSON.parse(trimmed) as string[]
+      }
+    }
     if (tags.includes(STAGE_WORK_TAG)) return 'work'
     if (tags.includes(STAGE_HOME_TAG)) return 'home'
     return 'none'
@@ -183,7 +191,8 @@ export function DashboardPage() {
 
     const stageWorkDates = new Set<string>()
     for (const it of all) {
-      if (getStageType(it.tagsJson) === 'work') {
+      const rawTags = (it as { tags?: unknown }).tags ?? it.tagsJson
+      if (getStageType(rawTags) === 'work') {
         if (isWithinStage(it.date) && !holidaySet.has(it.date)) {
           stageWorkDates.add(it.date)
         }

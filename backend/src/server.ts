@@ -345,6 +345,30 @@ function audit(req: express.Request, action: string, resourceType: string, resou
   }
 }
 
+function normalizeTagsJson(input: unknown, fallback: string): string {
+  if (Array.isArray(input)) {
+    return JSON.stringify(input.filter((t) => typeof t === 'string'))
+  }
+  if (typeof input === 'string') {
+    const trimmed = input.trim()
+    if (!trimmed) return '[]'
+    try {
+      const parsedJson = JSON.parse(trimmed)
+      if (Array.isArray(parsedJson)) {
+        return JSON.stringify(parsedJson.filter((t) => typeof t === 'string'))
+      }
+    } catch {
+      // ignore - will parse as comma-separated below
+    }
+    const parts = trimmed
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+    return JSON.stringify(parts)
+  }
+  return fallback
+}
+
 function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
   const u = getUser(req)
   if (!u || !u.isAdmin) return res.status(403).json({ error: 'forbidden' })
@@ -1410,36 +1434,59 @@ const planningUpsertSchemaWithWorkspace = planningUpsertSchema.extend({
   workspaceId: z.string().optional(),
 })
 
+const planningBulkUpdateSchema = z.object({
+  workspaceId: z.string().min(1),
+  itemIds: z.array(z.string().min(1)).min(1).max(100),
+  updates: z
+    .object({
+      status: z.enum(['todo', 'in_progress', 'done']).optional(),
+      priority: z.enum(['low', 'medium', 'high']).optional(),
+      tags: z.array(z.string().max(64)).max(50).optional(),
+    })
+    .strict()
+    .refine((v) => v.status !== undefined || v.priority !== undefined || v.tags !== undefined, {
+      message: 'no_updates',
+    }),
+})
+
+app.patch('/planning/bulk', requireAuth, asyncHandler(async (req, res) => {
+  const u = getDbUserOr401(req, res)
+  if (!u) return
+  const parsed = planningBulkUpdateSchema.safeParse(req.body)
+  if (!parsed.success) return res.status(400).json({ error: 'invalid_input' })
+  const { workspaceId, itemIds, updates } = parsed.data
+
+  const role = db.getMembershipRole(u.id, workspaceId)
+  if (!role) return res.status(403).json({ error: 'not_member' })
+  if (!canEditInWorkspace(u.id, workspaceId, u.id)) {
+    return res.status(403).json({ error: 'insufficient_permissions' })
+  }
+
+  const normalizedUpdates: { status?: DbPlanningItem['status']; priority?: DbPlanningItem['priority']; tagsJson?: string } = {}
+  if (updates.status !== undefined) normalizedUpdates.status = updates.status
+  if (updates.priority !== undefined) normalizedUpdates.priority = updates.priority
+  if (updates.tags !== undefined) normalizedUpdates.tagsJson = normalizeTagsJson(updates.tags, '[]')
+
+  const result = db.bulkUpdatePlanningItems(workspaceId, itemIds, normalizedUpdates)
+  if (result.error === 'not_found') return res.status(404).json({ error: 'not_found' })
+  if (result.error === 'wrong_workspace') return res.status(403).json({ error: 'wrong_workspace' })
+
+  audit(req, 'planning.bulk_update', 'planning', workspaceId, {
+    workspaceId,
+    itemCount: result.updatedCount,
+    fields: Object.keys(normalizedUpdates),
+  })
+  invalidateWorkspaceCache(workspaceId)
+  broadcastWorkspace(workspaceId, 'planning')
+  return res.json({ updatedCount: result.updatedCount })
+}))
+
 app.post('/planning', requireAuth, asyncHandler(async (req, res) => {
   const u = getDbUserOr401(req, res)
   if (!u) return
   const parsed = planningUpsertSchemaWithWorkspace.safeParse(req.body)
   if (!parsed.success) return res.status(400).json({ error: 'invalid_input' })
   const d = parsed.data
-
-  const normalizeTagsJson = (input: unknown, fallback: string) => {
-    if (Array.isArray(input)) {
-      return JSON.stringify(input.filter((t) => typeof t === 'string'))
-    }
-    if (typeof input === 'string') {
-      const trimmed = input.trim()
-      if (!trimmed) return '[]'
-      try {
-        const parsedJson = JSON.parse(trimmed)
-        if (Array.isArray(parsedJson)) {
-          return JSON.stringify(parsedJson.filter((t) => typeof t === 'string'))
-        }
-      } catch {
-        // ignore - will parse as comma-separated below
-      }
-      const parts = trimmed
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean)
-      return JSON.stringify(parts)
-    }
-    return fallback
-  }
 
   // Determine workspaceId
   let workspaceId = d.workspaceId

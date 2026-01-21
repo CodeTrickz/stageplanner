@@ -1752,6 +1752,76 @@ export const db = {
     return changed
   },
 
+  bulkUpdatePlanningItems: (
+    workspaceId: string,
+    itemIds: string[],
+    updates: { status?: DbPlanningItem['status']; priority?: DbPlanningItem['priority']; tagsJson?: string },
+  ): { updatedCount: number; error?: 'not_found' | 'wrong_workspace' } => {
+    const t = now()
+    const uniqueIds = Array.from(new Set(itemIds))
+    if (sqliteDb) {
+      const tx = sqliteDb.transaction(() => {
+        const placeholders = uniqueIds.map(() => '?').join(',')
+        const rows = sqliteDb
+          .prepare(
+            `SELECT id, group_id as groupId
+             FROM planning_items
+             WHERE id IN (${placeholders})`,
+          )
+          .all(...uniqueIds) as Array<{ id: string; groupId: string | null }>
+        if (rows.length !== uniqueIds.length) return { updatedCount: 0, error: 'not_found' as const }
+        if (rows.some((r) => r.groupId !== workspaceId)) return { updatedCount: 0, error: 'wrong_workspace' as const }
+
+        const setClauses: string[] = []
+        const params: Array<string | number> = []
+        if (updates.status !== undefined) {
+          setClauses.push('status = ?')
+          params.push(updates.status)
+        }
+        if (updates.priority !== undefined) {
+          setClauses.push('priority = ?')
+          params.push(updates.priority)
+        }
+        if (updates.tagsJson !== undefined) {
+          setClauses.push('tags_json = ?')
+          params.push(updates.tagsJson)
+        }
+        setClauses.push('updated_at = ?')
+        params.push(t)
+
+        const whereIds = uniqueIds.map(() => '?').join(',')
+        const info = sqliteDb
+          .prepare(
+            `UPDATE planning_items
+             SET ${setClauses.join(', ')}
+             WHERE id IN (${whereIds}) AND group_id = ?`,
+          )
+          .run(...params, ...uniqueIds, workspaceId)
+        return { updatedCount: info.changes }
+      })
+      return tx()
+    }
+
+    const s = readJson()
+    const idSet = new Set(uniqueIds)
+    const selected = s.planning.filter((p) => idSet.has(p.id))
+    if (selected.length !== uniqueIds.length) return { updatedCount: 0, error: 'not_found' }
+    if (selected.some((p) => p.groupId !== workspaceId)) return { updatedCount: 0, error: 'wrong_workspace' }
+
+    s.planning = s.planning.map((p) => {
+      if (!idSet.has(p.id)) return p
+      return {
+        ...p,
+        status: updates.status ?? p.status,
+        priority: updates.priority ?? p.priority,
+        tagsJson: updates.tagsJson ?? p.tagsJson,
+        updatedAt: t,
+      }
+    })
+    writeJson(s)
+    return { updatedCount: uniqueIds.length }
+  },
+
   setEmailVerificationForEmail: (
     email: string,
     tokenHash: string,

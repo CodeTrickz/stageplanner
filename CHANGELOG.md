@@ -11,6 +11,7 @@
 - Idle logout configuration via `VITE_IDLE_LOGOUT_MINUTES`
 - Server-side cache with ETag/If-None-Match for planning, notes, and files
 - Cache smoke test script (`testscripts/cache-smoke.sh`)
+- Bulk actions for planning items (multi-select + status/priority/tags update)
 
 ### Changed
 - Files are stored server-side (SQLite BLOBs)

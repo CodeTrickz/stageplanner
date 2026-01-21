@@ -8,6 +8,7 @@ import {
   Card,
   CardActions,
   CardContent,
+  Checkbox,
   Chip,
   Dialog,
   DialogActions,
@@ -16,6 +17,7 @@ import {
   IconButton,
   MenuItem,
   Paper,
+  Snackbar,
   Stack,
   TextField,
   Typography,
@@ -156,6 +158,14 @@ export function PlanningPage() {
   const [metas, setMetas] = useState<ServerFileMeta[]>([])
   const [draftLinks, setDraftLinks] = useState<{ noteId: string; fileKeys: string[] }>({ noteId: '', fileKeys: [] })
   const [refreshTick, setRefreshTick] = useState(0)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [lastSelectedId, setLastSelectedId] = useState<string | null>(null)
+  const [bulkStatus, setBulkStatus] = useState<ServerPlanningItem['status'] | ''>('')
+  const [bulkPriority, setBulkPriority] = useState<ServerPlanningItem['priority'] | ''>('')
+  const [bulkTags, setBulkTags] = useState<string[]>([])
+  const [bulkTagsTouched, setBulkTagsTouched] = useState(false)
+  const [bulkLoading, setBulkLoading] = useState(false)
+  const [bulkToast, setBulkToast] = useState<{ message: string; severity: 'success' | 'error' } | null>(null)
 
   useWorkspaceEvents((evt) => {
     if (['planning', 'notes', 'files', 'file_meta', 'links'].includes(evt.type)) {
@@ -300,6 +310,21 @@ export function PlanningPage() {
     return list
   }, [items, date])
 
+  const tagOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const it of items) {
+      try {
+        const tags = JSON.parse(it.tagsJson || '[]') as string[]
+        for (const tag of tags) {
+          if (typeof tag === 'string' && tag.trim()) set.add(tag)
+        }
+      } catch {
+        // ignore invalid tag payloads
+      }
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b))
+  }, [items])
+
   const fileGroups = useMemo(() => {
     const map = new Map<string, { groupKey: string; name: string; type: string; latestCreatedAt: number }>()
     for (const f of files ?? []) {
@@ -314,6 +339,18 @@ export function PlanningPage() {
       .map((g) => ({ ...g, folder: metaByKey.get(g.groupKey)?.folder || '' }))
       .sort((a, b) => (b.latestCreatedAt ?? 0) - (a.latestCreatedAt ?? 0))
   }, [files, metas])
+
+  useEffect(() => {
+    setSelectedIds([])
+    setLastSelectedId(null)
+  }, [date])
+
+  useEffect(() => {
+    if (selectedIds.length === 0) return
+    const visibleIds = new Set(itemsForDate.map((it) => it.id))
+    const next = selectedIds.filter((id) => visibleIds.has(id))
+    if (next.length !== selectedIds.length) setSelectedIds(next)
+  }, [itemsForDate, selectedIds])
 
 
   useEffect(() => {
@@ -451,6 +488,93 @@ export function PlanningPage() {
     }
   }
 
+  function toggleSelection(id: string, checked: boolean, shiftKey: boolean) {
+    const orderedIds = itemsForDate.map((it) => it.id)
+    const next = new Set(selectedIds)
+    if (shiftKey && lastSelectedId) {
+      const start = orderedIds.indexOf(lastSelectedId)
+      const end = orderedIds.indexOf(id)
+      if (start >= 0 && end >= 0) {
+        const [from, to] = start < end ? [start, end] : [end, start]
+        for (const itemId of orderedIds.slice(from, to + 1)) {
+          if (checked) next.add(itemId)
+          else next.delete(itemId)
+        }
+      } else if (checked) {
+        next.add(id)
+      } else {
+        next.delete(id)
+      }
+    } else if (checked) {
+      next.add(id)
+    } else {
+      next.delete(id)
+    }
+    setSelectedIds(Array.from(next))
+    setLastSelectedId(id)
+  }
+
+  async function applyBulkUpdate() {
+    if (!token || !currentWorkspace?.id) return
+    const updates: { status?: ServerPlanningItem['status']; priority?: ServerPlanningItem['priority']; tags?: string[] } = {}
+    if (bulkStatus) updates.status = bulkStatus
+    if (bulkPriority) updates.priority = bulkPriority
+    if (bulkTagsTouched) {
+      updates.tags = bulkTags.map((t) => t.trim()).filter(Boolean).slice(0, 50)
+    }
+
+    if (Object.keys(updates).length === 0) {
+      setBulkToast({ message: 'Kies minstens één veld om aan te passen.', severity: 'error' })
+      return
+    }
+    if (selectedIds.length > 10) {
+      const ok = window.confirm(`Je staat op het punt ${selectedIds.length} items bij te werken. Doorgaan?`)
+      if (!ok) return
+    }
+
+    setBulkLoading(true)
+    try {
+      const result = await apiFetch('/planning/bulk', {
+        method: 'PATCH',
+        token: token || undefined,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          workspaceId: currentWorkspace.id,
+          itemIds: selectedIds,
+          updates,
+        }),
+      })
+      const updatedCount = Number(result.updatedCount || 0)
+      setItems((prev) =>
+        prev.map((it) => {
+          if (!selectedIds.includes(it.id)) return it
+          return {
+            ...it,
+            status: updates.status ?? it.status,
+            priority: updates.priority ?? it.priority,
+            tagsJson: updates.tags ? JSON.stringify(updates.tags) : it.tagsJson,
+            updatedAt: Date.now(),
+          }
+        }),
+      )
+      setSelectedIds([])
+      setLastSelectedId(null)
+      setBulkStatus('')
+      setBulkPriority('')
+      setBulkTags([])
+      setBulkTagsTouched(false)
+      setRefreshTick((v) => v + 1)
+      setBulkToast({ message: `${updatedCount || selectedIds.length} items bijgewerkt.`, severity: 'success' })
+    } catch (e) {
+      setBulkToast({ message: 'Bulk update mislukt. Probeer opnieuw.', severity: 'error' })
+      if (import.meta.env.DEV) {
+        console.error('Failed to bulk update planning items:', e)
+      }
+    } finally {
+      setBulkLoading(false)
+    }
+  }
+
   return (
     <Box sx={{ display: 'grid', gap: { xs: 1.5, sm: 2 } }}>
       <Typography variant="h5" sx={{ fontWeight: 800, fontSize: { xs: '1.125rem', sm: '1.25rem' } }}>
@@ -505,6 +629,87 @@ export function PlanningPage() {
         </Alert>
       )}
 
+      {selectedIds.length > 0 && (
+        <Paper variant="outlined" sx={{ p: 1.5 }}>
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1.5}
+            alignItems={{ xs: 'stretch', sm: 'center' }}
+            useFlexGap
+            flexWrap="wrap"
+          >
+            <Typography sx={{ fontWeight: 700 }}>{selectedIds.length} geselecteerd</Typography>
+            <TextField
+              label="Status"
+              select
+              size="small"
+              value={bulkStatus}
+              onChange={(e) => setBulkStatus(e.target.value as ServerPlanningItem['status'] | '')}
+              sx={{ minWidth: 160 }}
+              disabled={bulkLoading}
+            >
+              <MenuItem value="">Ongewijzigd</MenuItem>
+              <MenuItem value="todo">Todo</MenuItem>
+              <MenuItem value="in_progress">In progress</MenuItem>
+              <MenuItem value="done">Done</MenuItem>
+            </TextField>
+            <TextField
+              label="Prioriteit"
+              select
+              size="small"
+              value={bulkPriority}
+              onChange={(e) => setBulkPriority(e.target.value as ServerPlanningItem['priority'] | '')}
+              sx={{ minWidth: 160 }}
+              disabled={bulkLoading}
+            >
+              <MenuItem value="">Ongewijzigd</MenuItem>
+              <MenuItem value="low">Low</MenuItem>
+              <MenuItem value="medium">Medium</MenuItem>
+              <MenuItem value="high">High</MenuItem>
+            </TextField>
+            <Autocomplete
+              multiple
+              freeSolo
+              options={tagOptions}
+              size="small"
+              value={bulkTags}
+              onChange={(_e, value) => {
+                setBulkTags(value)
+                setBulkTagsTouched(true)
+              }}
+              renderInput={(params) => <TextField {...params} label="Tags" placeholder="Tag toevoegen" />}
+              sx={{ minWidth: 220, flex: 1 }}
+              disabled={bulkLoading}
+            />
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => {
+                setBulkTags([])
+                setBulkTagsTouched(true)
+              }}
+              disabled={bulkLoading}
+            >
+              Tags wissen
+            </Button>
+            <Button variant="contained" size="small" onClick={applyBulkUpdate} disabled={bulkLoading}>
+              {bulkLoading ? 'Bezig...' : 'Toepassen'}
+            </Button>
+            <Button
+              variant="text"
+              size="small"
+              onClick={() => {
+                setSelectedIds([])
+                setLastSelectedId(null)
+              }}
+              disabled={bulkLoading}
+            >
+              Selectie wissen
+            </Button>
+          </Stack>
+        </Paper>
+      )}
+
       <Box sx={{ display: 'grid', gap: 2 }}>
         {itemsForDate.map((it) => (
           <Card key={it.id} variant="outlined">
@@ -515,19 +720,30 @@ export function PlanningPage() {
                 alignItems={{ xs: 'flex-start', sm: 'center' }}
                 justifyContent="space-between"
               >
-                <Box>
-                  <Typography variant="subtitle2" color="text.secondary">
-                    {it.start} – {it.end}
-                  </Typography>
-                  <Typography variant="h6" sx={{ fontWeight: 800 }}>
-                    {it.title}
-                  </Typography>
-                  {it.notes && (
-                    <Typography sx={{ mt: 0.5, whiteSpace: 'pre-wrap' }}>
-                      {it.notes}
+                <Stack direction="row" spacing={1} alignItems="flex-start">
+                  <Checkbox
+                    size="small"
+                    checked={selectedIds.includes(it.id)}
+                    onChange={(e) => {
+                      const native = e.nativeEvent as MouseEvent
+                      toggleSelection(it.id, e.target.checked, !!native.shiftKey)
+                    }}
+                    inputProps={{ 'aria-label': 'Selecteer item' }}
+                  />
+                  <Box>
+                    <Typography variant="subtitle2" color="text.secondary">
+                      {it.start} – {it.end}
                     </Typography>
-                  )}
-                </Box>
+                    <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                      {it.title}
+                    </Typography>
+                    {it.notes && (
+                      <Typography sx={{ mt: 0.5, whiteSpace: 'pre-wrap' }}>
+                        {it.notes}
+                      </Typography>
+                    )}
+                  </Box>
+                </Stack>
                 <Stack direction="row" spacing={1} sx={{ pt: { xs: 1, sm: 0 } }}>
                   <Chip
                     size="small"
@@ -725,6 +941,17 @@ export function PlanningPage() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Snackbar
+        open={!!bulkToast}
+        autoHideDuration={4000}
+        onClose={() => setBulkToast(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setBulkToast(null)} severity={bulkToast?.severity || 'success'} sx={{ width: '100%' }}>
+          {bulkToast?.message}
+        </Alert>
+      </Snackbar>
     </Box>
   )
 }

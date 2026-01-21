@@ -3,7 +3,7 @@
 Frontend for Stage Planner with workspace‑scoped data and realtime updates, with multiple tabs:
 
 - **Dashboard**: overview of today/week/tasks + internship progress.
-- **Planning**: day planning with time slots (create/edit/delete items).
+- **Planning**: day planning with time slots (create/edit/delete items + bulk updates).
 - **Week**: week view (7 days).
 - **Tasks**: task overview with filters.
 - **Files**: upload + download (stored on the server in SQLite).

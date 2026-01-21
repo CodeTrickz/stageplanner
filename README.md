@@ -125,6 +125,7 @@ Important:
 - ✅ Day planning with time slots
 - ✅ Week overview (7 days)
 - ✅ Task overview with filters
+- ✅ Bulk actions in planning (multi-select, status/priority/tags)
 - ✅ File management (upload/download via backend, stored in SQLite)
 - ✅ Notes with attachments
 - ✅ Export (.txt, .zip)

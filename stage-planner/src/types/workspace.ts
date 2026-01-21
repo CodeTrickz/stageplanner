@@ -1,4 +1,4 @@
-export type WorkspaceRole = 'STUDENT' | 'MENTOR' | 'BEGELEIDER'
+export type WorkspaceRole = 'OWNER' | 'EDITOR' | 'COMMENTER' | 'VIEWER'
 
 export type Workspace = {
   id: string

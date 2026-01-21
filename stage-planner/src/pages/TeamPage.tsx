@@ -26,11 +26,13 @@ import { useWorkspace } from '../hooks/useWorkspace'
 import { useWorkspaces } from '../api/workspace'
 import { useAuth } from '../auth/auth'
 import type { WorkspaceMember, WorkspaceRole, WorkspaceInvitation } from '../types/workspace'
+import { getWorkspacePermissions } from '../utils/permissions'
 
 const roleLabels: Record<WorkspaceRole, string> = {
-  STUDENT: 'Student',
-  MENTOR: 'Mentor',
-  BEGELEIDER: 'Begeleider',
+  OWNER: 'Owner',
+  EDITOR: 'Editor',
+  COMMENTER: 'Commenter',
+  VIEWER: 'Viewer',
 }
 
 const statusLabels: Record<string, string> = {
@@ -50,10 +52,11 @@ export function TeamPage() {
   const [error, setError] = useState<string | null>(null)
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteRole, setInviteRole] = useState<WorkspaceRole>('MENTOR')
+  const [inviteRole, setInviteRole] = useState<WorkspaceRole>('VIEWER')
   const [inviting, setInviting] = useState(false)
 
-  const canManageTeam = currentWorkspace?.role === 'STUDENT'
+  const permissions = getWorkspacePermissions(currentWorkspace?.role)
+  const canManageTeam = permissions.isOwner
 
   const loadMembers = useCallback(async () => {
     if (!currentWorkspace) {
@@ -176,7 +179,7 @@ export function TeamPage() {
                             <Chip
                               label={roleLabels[inv.role as WorkspaceRole]}
                               size="small"
-                              color={inv.role === 'MENTOR' ? 'secondary' : 'default'}
+                              color={inv.role === 'OWNER' ? 'primary' : inv.role === 'EDITOR' ? 'secondary' : 'default'}
                             />
                             <Typography variant="caption" color="text.secondary">
                               Verloopt: {new Date(inv.expiresAt).toLocaleDateString('nl-NL')}
@@ -206,9 +209,10 @@ export function TeamPage() {
                         size="small"
                         sx={{ minWidth: 120 }}
                       >
-                        <MenuItem value="STUDENT">{roleLabels.STUDENT}</MenuItem>
-                        <MenuItem value="MENTOR">{roleLabels.MENTOR}</MenuItem>
-                        <MenuItem value="BEGELEIDER">{roleLabels.BEGELEIDER}</MenuItem>
+                        <MenuItem value="OWNER">{roleLabels.OWNER}</MenuItem>
+                        <MenuItem value="EDITOR">{roleLabels.EDITOR}</MenuItem>
+                        <MenuItem value="COMMENTER">{roleLabels.COMMENTER}</MenuItem>
+                        <MenuItem value="VIEWER">{roleLabels.VIEWER}</MenuItem>
                       </Select>
                       <IconButton
                         edge="end"
@@ -222,7 +226,7 @@ export function TeamPage() {
                     <Chip
                       label={roleLabels[member.role]}
                       size="small"
-                      color={member.role === 'STUDENT' ? 'primary' : member.role === 'MENTOR' ? 'secondary' : 'default'}
+                      color={member.role === 'OWNER' ? 'primary' : member.role === 'EDITOR' ? 'secondary' : 'default'}
                     />
                   )
                 }
@@ -280,8 +284,10 @@ export function TeamPage() {
                 Rol
               </Typography>
               <Select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as WorkspaceRole)}>
-                <MenuItem value="MENTOR">{roleLabels.MENTOR}</MenuItem>
-                <MenuItem value="BEGELEIDER">{roleLabels.BEGELEIDER}</MenuItem>
+                <MenuItem value="OWNER">{roleLabels.OWNER}</MenuItem>
+                <MenuItem value="EDITOR">{roleLabels.EDITOR}</MenuItem>
+                <MenuItem value="COMMENTER">{roleLabels.COMMENTER}</MenuItem>
+                <MenuItem value="VIEWER">{roleLabels.VIEWER}</MenuItem>
               </Select>
             </FormControl>
           </Stack>

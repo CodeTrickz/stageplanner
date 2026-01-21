@@ -33,6 +33,7 @@ import { useWorkspace } from '../hooks/useWorkspace'
 import { yyyyMmDdLocal } from '../utils/date'
 import { apiFetch, useApiToken } from '../api/client'
 import { useWorkspaceEvents } from '../hooks/useWorkspaceEvents'
+import { getWorkspacePermissions } from '../utils/permissions'
 
 type ServerPlanningItem = {
   id: string
@@ -139,6 +140,8 @@ export function PlanningPage() {
     defaultStatus,
     timeFormat,
   } = useSettings()
+  const permissions = getWorkspacePermissions(currentWorkspace?.role)
+  const canEdit = permissions.canEdit
   const [date, setDate] = useState(() => yyyyMmDdLocal(new Date()))
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState<Draft>(() => ({
@@ -367,6 +370,7 @@ export function PlanningPage() {
   }, [draft])
 
   function startNew() {
+    if (!canEdit) return
     const [hh, mm] = (workdayStart || '09:00').split(':').map((x) => Number(x))
     const baseMins = (Number.isFinite(hh) ? hh : 9) * 60 + (Number.isFinite(mm) ? mm : 0)
     const endMins = baseMins + Math.min(8 * 60, Math.max(5, defaultTaskMinutes || 60))
@@ -387,6 +391,7 @@ export function PlanningPage() {
   }
 
   async function saveLinks(next: { noteId: string; fileKeys: string[] }) {
+    if (!canEdit) return
     if (!token || !currentWorkspace?.id || !draft.id) {
       setDraftLinks(next)
       return
@@ -417,6 +422,7 @@ export function PlanningPage() {
   }
 
   async function save() {
+    if (!canEdit) return
     const err = validation
     if (err) return
     if (!token || !currentWorkspace?.id) return
@@ -474,6 +480,7 @@ export function PlanningPage() {
   }
 
   async function remove(id: string) {
+    if (!canEdit) return
     if (!token) return
     try {
       await apiFetch(`/planning/${id}`, {
@@ -515,6 +522,7 @@ export function PlanningPage() {
   }
 
   async function applyBulkUpdate() {
+    if (!canEdit) return
     if (!token || !currentWorkspace?.id) return
     const updates: { status?: ServerPlanningItem['status']; priority?: ServerPlanningItem['priority']; tags?: string[] } = {}
     if (bulkStatus) updates.status = bulkStatus
@@ -595,7 +603,13 @@ export function PlanningPage() {
                 size="small"
                 sx={{ width: { xs: '100%', sm: 'auto' }, maxWidth: { xs: '100%', sm: 200 } }}
               />
-              <Button variant="contained" onClick={startNew} size="small" sx={{ alignSelf: { xs: 'stretch', sm: 'auto' } }}>
+              <Button
+                variant="contained"
+                onClick={startNew}
+                size="small"
+                disabled={!canEdit}
+                sx={{ alignSelf: { xs: 'stretch', sm: 'auto' } }}
+              >
                 Nieuw item
               </Button>
             </Stack>
@@ -613,6 +627,7 @@ export function PlanningPage() {
               status: it.status ?? 'todo',
             }))}
             onSelect={(t) => {
+            if (!canEdit) return
               const full = itemsForDate.find((x) => x.id === String(t.id))
               if (!full) return
               setDraft(toDraft(full))
@@ -646,7 +661,7 @@ export function PlanningPage() {
               value={bulkStatus}
               onChange={(e) => setBulkStatus(e.target.value as ServerPlanningItem['status'] | '')}
               sx={{ minWidth: 160 }}
-              disabled={bulkLoading}
+              disabled={bulkLoading || !canEdit}
             >
               <MenuItem value="">Ongewijzigd</MenuItem>
               <MenuItem value="todo">Todo</MenuItem>
@@ -660,7 +675,7 @@ export function PlanningPage() {
               value={bulkPriority}
               onChange={(e) => setBulkPriority(e.target.value as ServerPlanningItem['priority'] | '')}
               sx={{ minWidth: 160 }}
-              disabled={bulkLoading}
+              disabled={bulkLoading || !canEdit}
             >
               <MenuItem value="">Ongewijzigd</MenuItem>
               <MenuItem value="low">Low</MenuItem>
@@ -679,7 +694,7 @@ export function PlanningPage() {
               }}
               renderInput={(params) => <TextField {...params} label="Tags" placeholder="Tag toevoegen" />}
               sx={{ minWidth: 220, flex: 1 }}
-              disabled={bulkLoading}
+              disabled={bulkLoading || !canEdit}
             />
             <Button
               variant="outlined"
@@ -688,11 +703,11 @@ export function PlanningPage() {
                 setBulkTags([])
                 setBulkTagsTouched(true)
               }}
-              disabled={bulkLoading}
+              disabled={bulkLoading || !canEdit}
             >
               Tags wissen
             </Button>
-            <Button variant="contained" size="small" onClick={applyBulkUpdate} disabled={bulkLoading}>
+            <Button variant="contained" size="small" onClick={applyBulkUpdate} disabled={bulkLoading || !canEdit}>
               {bulkLoading ? 'Bezig...' : 'Toepassen'}
             </Button>
             <Button
@@ -702,7 +717,7 @@ export function PlanningPage() {
                 setSelectedIds([])
                 setLastSelectedId(null)
               }}
-              disabled={bulkLoading}
+              disabled={bulkLoading || !canEdit}
             >
               Selectie wissen
             </Button>
@@ -729,6 +744,7 @@ export function PlanningPage() {
                       toggleSelection(it.id, e.target.checked, !!native.shiftKey)
                     }}
                     inputProps={{ 'aria-label': 'Selecteer item' }}
+                    disabled={!canEdit}
                   />
                   <Box>
                     <Typography variant="subtitle2" color="text.secondary">
@@ -801,12 +817,14 @@ export function PlanningPage() {
                   setDraft(toDraft(it))
                   setOpen(true)
                 }}
+                disabled={!canEdit}
               >
                 <EditOutlinedIcon />
               </IconButton>
               <IconButton
                 aria-label="Verwijder"
                 onClick={() => it.id && remove(it.id)}
+                disabled={!canEdit}
               >
                 <DeleteOutlineIcon />
               </IconButton>

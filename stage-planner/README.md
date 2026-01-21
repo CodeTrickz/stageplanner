@@ -9,6 +9,7 @@ Frontend for Stage Planner with workspace‑scoped data and realtime updates, wi
 - **Files**: upload + download (stored on the server in SQLite).
 - **Notes / mail**: text + attachments (pick from Files), save, export as **.txt** or **.zip**.
 - **Team**: workspaces and member management.
+- **Workspace roles**: owner/editor/commenter/viewer with permission checks.
 - **Settings**: user settings (planning, internship period, holidays, theme).
 - **Stage report**: export internship progress to PDF/CSV with totals and weekly breakdown.
 - **Admin**: management and logs (admin only).

@@ -135,6 +135,7 @@ Important:
 - ✅ Admin functionality
 - ✅ Internship day tracking (workdays vs home project)
 - ✅ Workspace-scoped collaboration + realtime updates
+- ✅ Workspace roles (owner/editor/commenter/viewer)
 
 ## Contributing
 

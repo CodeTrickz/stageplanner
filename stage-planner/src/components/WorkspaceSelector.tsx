@@ -13,9 +13,10 @@ import { useWorkspace } from '../hooks/useWorkspace'
 import type { Workspace } from '../types/workspace'
 
 const roleLabels: Record<string, string> = {
-  STUDENT: 'Student',
-  MENTOR: 'Mentor',
-  BEGELEIDER: 'Begeleider',
+  OWNER: 'Owner',
+  EDITOR: 'Editor',
+  COMMENTER: 'Commenter',
+  VIEWER: 'Viewer',
 }
 
 export function WorkspaceSelector({ variant = 'drawer' }: { variant?: 'drawer' | 'toolbar' } = {}) {
@@ -196,7 +197,7 @@ export function WorkspaceSelector({ variant = 'drawer' }: { variant?: 'drawer' |
                     <Chip
                       label={roleLabels[ws.role] || ws.role}
                       size="small"
-                      color={ws.role === 'STUDENT' ? 'primary' : ws.role === 'MENTOR' ? 'secondary' : 'default'}
+                      color={ws.role === 'OWNER' ? 'primary' : ws.role === 'EDITOR' ? 'secondary' : 'default'}
                       sx={{ height: 20, fontSize: '0.7rem' }}
                     />
                   )}

@@ -21,7 +21,18 @@ export type DbUser = {
   updatedAt: number
 }
 
-export type WorkspaceRole = 'STUDENT' | 'MENTOR' | 'BEGELEIDER'
+export type WorkspaceRole = 'OWNER' | 'EDITOR' | 'COMMENTER' | 'VIEWER'
+
+const WORKSPACE_ROLES = new Set<WorkspaceRole>(['OWNER', 'EDITOR', 'COMMENTER', 'VIEWER'])
+
+function normalizeWorkspaceRole(role: string | null | undefined): WorkspaceRole {
+  if (!role) return 'VIEWER'
+  if (WORKSPACE_ROLES.has(role as WorkspaceRole)) return role as WorkspaceRole
+  if (role === 'STUDENT' || role === 'admin') return 'OWNER'
+  if (role === 'MENTOR' || role === 'BEGELEIDER' || role === 'member') return 'COMMENTER'
+  if (role === 'viewer') return 'VIEWER'
+  return 'VIEWER'
+}
 
 export type DbGroup = {
   id: string
@@ -432,7 +443,7 @@ function openSqlite() {
       id TEXT PRIMARY KEY,
       workspace_id TEXT NOT NULL,
       email TEXT NOT NULL,
-      role TEXT NOT NULL CHECK(role IN ('STUDENT', 'MENTOR', 'BEGELEIDER')),
+      role TEXT NOT NULL CHECK(role IN ('OWNER', 'EDITOR', 'COMMENTER', 'VIEWER')),
       invited_by TEXT NOT NULL,
       token_hash TEXT NOT NULL UNIQUE,
       expires_at INTEGER NOT NULL,
@@ -445,6 +456,52 @@ function openSqlite() {
     CREATE INDEX IF NOT EXISTS idx_invitations_workspace ON workspace_invitations(workspace_id);
     CREATE INDEX IF NOT EXISTS idx_invitations_token ON workspace_invitations(token_hash);
   `)
+
+  // Migrate workspace_invitations role constraint if still using old roles
+  const invitationSql = db
+    .prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='workspace_invitations'`)
+    .get() as { sql?: string } | undefined
+  if (invitationSql?.sql?.includes("role IN ('STUDENT', 'MENTOR', 'BEGELEIDER')")) {
+    db.exec(`ALTER TABLE workspace_invitations RENAME TO workspace_invitations_old;`)
+    db.exec(`
+      CREATE TABLE workspace_invitations (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        email TEXT NOT NULL,
+        role TEXT NOT NULL CHECK(role IN ('OWNER', 'EDITOR', 'COMMENTER', 'VIEWER')),
+        invited_by TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        expires_at INTEGER NOT NULL,
+        accepted_at INTEGER,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY(workspace_id) REFERENCES groups(id) ON DELETE CASCADE,
+        FOREIGN KEY(invited_by) REFERENCES users(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_invitations_email ON workspace_invitations(email, expires_at);
+      CREATE INDEX IF NOT EXISTS idx_invitations_workspace ON workspace_invitations(workspace_id);
+      CREATE INDEX IF NOT EXISTS idx_invitations_token ON workspace_invitations(token_hash);
+    `)
+    db.exec(`
+      INSERT INTO workspace_invitations (id, workspace_id, email, role, invited_by, token_hash, expires_at, accepted_at, created_at)
+      SELECT
+        id,
+        workspace_id,
+        email,
+        CASE
+          WHEN role IN ('STUDENT', 'admin') THEN 'OWNER'
+          WHEN role IN ('MENTOR', 'BEGELEIDER', 'member') THEN 'COMMENTER'
+          WHEN role = 'viewer' THEN 'VIEWER'
+          ELSE 'VIEWER'
+        END as role,
+        invited_by,
+        token_hash,
+        expires_at,
+        accepted_at,
+        created_at
+      FROM workspace_invitations_old;
+    `)
+    db.exec(`DROP TABLE workspace_invitations_old;`)
+  }
 
   // Feedback/comments table
   db.exec(`
@@ -526,21 +583,15 @@ function openSqlite() {
       .prepare(`SELECT role FROM group_memberships WHERE group_id=? AND user_id=?`)
       .get(u.groupId, u.id) as { role?: string } | undefined
     if (exists) {
-      // Migrate existing roles: 'admin' -> 'STUDENT', 'member' -> 'MENTOR'
-      // Check if status column exists before using it
+      // Migrate existing roles to new workspace roles
       const hasStatus = membershipCols.includes('status')
-      if (exists.role === 'admin') {
-        if (hasStatus) {
-          db.prepare(`UPDATE group_memberships SET role='STUDENT', status='active' WHERE group_id=? AND user_id=? AND (status IS NULL OR status != 'active')`).run(u.groupId, u.id)
-        } else {
-          db.prepare(`UPDATE group_memberships SET role='STUDENT' WHERE group_id=? AND user_id=?`).run(u.groupId, u.id)
-        }
-      } else if (exists.role === 'member') {
-        if (hasStatus) {
-          db.prepare(`UPDATE group_memberships SET role='MENTOR', status='active' WHERE group_id=? AND user_id=? AND (status IS NULL OR status != 'active')`).run(u.groupId, u.id)
-        } else {
-          db.prepare(`UPDATE group_memberships SET role='MENTOR' WHERE group_id=? AND user_id=?`).run(u.groupId, u.id)
-        }
+      const normalized = normalizeWorkspaceRole(exists.role)
+      if (hasStatus) {
+        db.prepare(
+          `UPDATE group_memberships SET role=?, status='active' WHERE group_id=? AND user_id=? AND (status IS NULL OR status != 'active')`,
+        ).run(normalized, u.groupId, u.id)
+      } else {
+        db.prepare(`UPDATE group_memberships SET role=? WHERE group_id=? AND user_id=?`).run(normalized, u.groupId, u.id)
       }
       // Set owner_id on group if not set (only if column exists)
       const hasOwnerId = gCols.includes('owner_id')
@@ -552,11 +603,11 @@ function openSqlite() {
       }
       continue
     }
-    // Personal group owner is STUDENT
+    // Personal group owner is OWNER
     db.prepare(`INSERT INTO group_memberships (group_id, user_id, role, status, created_at) VALUES (?, ?, ?, ?, ?)`).run(
       u.groupId,
       u.id,
-      'STUDENT',
+      'OWNER',
       'active',
       now(),
     )
@@ -570,13 +621,13 @@ function openSqlite() {
   // Migrate all existing group_memberships roles (bulk update)
   db.exec(`
     UPDATE group_memberships 
-    SET role='STUDENT', status='active' 
-    WHERE role='admin' AND (status IS NULL OR status != 'active');
+    SET role='OWNER', status='active' 
+    WHERE role IN ('STUDENT', 'admin') AND (status IS NULL OR status != 'active');
   `)
   db.exec(`
     UPDATE group_memberships 
-    SET role='MENTOR', status='active' 
-    WHERE role='member' AND (status IS NULL OR status != 'active');
+    SET role='COMMENTER', status='active' 
+    WHERE role IN ('MENTOR', 'BEGELEIDER', 'member') AND (status IS NULL OR status != 'active');
   `)
 
   // Add group_id to planning_items if missing (older DBs) and backfill
@@ -732,11 +783,7 @@ export const db = {
       const personal = sqliteDb.prepare(`SELECT group_id as groupId FROM users WHERE id=?`).get(userId) as { groupId?: string } | undefined
       const personalId = personal?.groupId || null
       return rows.map((r) => {
-        // Migrate old 'admin' role to 'STUDENT'
-        let role = r.role
-        if (role === 'admin') role = 'STUDENT'
-        if (role !== 'STUDENT' && role !== 'MENTOR' && role !== 'BEGELEIDER') role = 'STUDENT'
-        
+        const role = normalizeWorkspaceRole(r.role)
         return {
           id: r.id,
           name: r.name,
@@ -744,7 +791,7 @@ export const db = {
           description: r.description ?? undefined,
           ownerId: r.ownerId ?? undefined,
           createdAt: r.createdAt,
-          role: role as WorkspaceRole,
+          role,
           isPersonal: !!(personalId && r.id === personalId),
         }
       }) as Array<DbGroup & { role: WorkspaceRole; isPersonal: boolean }>
@@ -754,7 +801,7 @@ export const db = {
     const u = s.users.find((x) => x.id === userId)
     if (!u?.groupId) return []
     const g = s.groups.find((gg) => gg.id === u.groupId)
-    return g ? [{ ...g, role: 'STUDENT', isPersonal: true }] : []
+    return g ? [{ ...g, role: 'OWNER', isPersonal: true }] : []
   },
 
   isMemberOfGroup: (userId: string, groupId: string): boolean => {
@@ -787,21 +834,17 @@ export const db = {
       
       if (!row) return null
       
-      let role = row.role
-      // Migrate old roles
-      if (role === 'admin') role = 'STUDENT'
-      if (role === 'member') role = 'MENTOR'
-      
+      let role = normalizeWorkspaceRole(row.role)
       // Check status if column exists
       if (hasStatus && row.status && row.status !== 'active') {
         return null // Only return role if status is active
       }
-      
-      return role === 'STUDENT' || role === 'MENTOR' || role === 'BEGELEIDER' ? role as WorkspaceRole : null
+
+      return role
     }
     const s = readJson()
     const u = s.users.find((x) => x.id === userId)
-    if (u?.groupId === groupId) return 'STUDENT'
+    if (u?.groupId === groupId) return 'OWNER'
     return null
   },
 
@@ -868,19 +911,14 @@ export const db = {
         }>
       
       return rows.map((r) => {
-        // Migrate old roles
-        let role = r.role
-        if (role === 'admin') role = 'STUDENT'
-        if (role === 'member') role = 'MENTOR'
-        if (role !== 'STUDENT' && role !== 'MENTOR' && role !== 'BEGELEIDER') role = 'STUDENT'
-        
+        const role = normalizeWorkspaceRole(r.role)
         return {
           userId: r.userId,
           email: r.email,
           username: r.username,
           firstName: r.firstName,
           lastName: r.lastName,
-          role: role as WorkspaceRole,
+          role,
           status: (r.status === 'active' || r.status === 'pending' || r.status === 'rejected' || r.status === 'revoked' 
             ? r.status 
             : 'active') as 'active' | 'pending' | 'rejected' | 'revoked',
@@ -898,7 +936,7 @@ export const db = {
       username: u.username ?? null,
       firstName: u.firstName ?? null,
       lastName: u.lastName ?? null,
-      role: 'STUDENT' as WorkspaceRole,
+      role: 'OWNER' as WorkspaceRole,
       status: 'active' as const,
       invitedBy: null,
       invitedAt: null,
@@ -917,7 +955,7 @@ export const db = {
   countGroupAdmins: (groupId: string): number => {
     if (sqliteDb) {
       const row = sqliteDb
-        .prepare(`SELECT COUNT(1) as c FROM group_memberships WHERE group_id=? AND role='STUDENT'`)
+        .prepare(`SELECT COUNT(1) as c FROM group_memberships WHERE group_id=? AND role='OWNER'`)
         .get(groupId) as { c: number } | undefined
       return Number(row?.c ?? 0)
     }
@@ -1011,7 +1049,7 @@ export const db = {
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
         })
-      // Ensure membership (use STUDENT role, not 'admin')
+      // Ensure membership (use OWNER role, not legacy values)
       const membershipCols = sqliteDb
         .prepare(`PRAGMA table_info(group_memberships)`)
         .all()
@@ -1024,14 +1062,14 @@ export const db = {
             `INSERT OR IGNORE INTO group_memberships (group_id, user_id, role, status, created_at)
              VALUES (?, ?, ?, ?, ?)`,
           )
-          .run(user.groupId, user.id, 'STUDENT', 'active', t)
+          .run(user.groupId, user.id, 'OWNER', 'active', t)
       } else {
         sqliteDb
           .prepare(
             `INSERT OR IGNORE INTO group_memberships (group_id, user_id, role, created_at)
              VALUES (?, ?, ?, ?)`,
           )
-          .run(user.groupId, user.id, 'STUDENT', t)
+          .run(user.groupId, user.id, 'OWNER', t)
       }
       return user
     }
@@ -2360,7 +2398,7 @@ export const db = {
       // Create membership for owner
       sqliteDb
         .prepare(`INSERT INTO group_memberships (group_id, user_id, role, status, created_at) VALUES (?, ?, ?, ?, ?)`)
-        .run(g.id, ownerId, 'STUDENT', 'active', t)
+        .run(g.id, ownerId, 'OWNER', 'active', t)
       return g
     }
     const s = readJson()
@@ -2428,7 +2466,8 @@ export const db = {
            FROM workspace_invitations WHERE token_hash=?`,
         )
         .get(tokenHash) as DbWorkspaceInvitation | undefined
-      return row ?? null
+      if (!row) return null
+      return { ...row, role: normalizeWorkspaceRole(row.role) }
     }
     return null
   },
@@ -2456,12 +2495,13 @@ export const db = {
 
   listWorkspaceInvitations: (workspaceId: string): DbWorkspaceInvitation[] => {
     if (sqliteDb) {
-      return sqliteDb
+      const rows = sqliteDb
         .prepare(
           `SELECT id, workspace_id as workspaceId, email, role, invited_by as invitedBy, token_hash as tokenHash, expires_at as expiresAt, accepted_at as acceptedAt, created_at as createdAt
            FROM workspace_invitations WHERE workspace_id=? ORDER BY created_at DESC`,
         )
         .all(workspaceId) as DbWorkspaceInvitation[]
+      return rows.map((row) => ({ ...row, role: normalizeWorkspaceRole(row.role) }))
     }
     return []
   },
@@ -2494,6 +2534,19 @@ export const db = {
     }
     // JSON fallback not implemented
     return feedback
+  },
+
+  getFeedbackById: (feedbackId: string): DbFeedback | null => {
+    if (sqliteDb) {
+      const row = sqliteDb
+        .prepare(
+          `SELECT id, resource_type as resourceType, resource_id as resourceId, author_id as authorId, content, created_at as createdAt, updated_at as updatedAt
+           FROM feedback WHERE id=?`,
+        )
+        .get(feedbackId) as DbFeedback | undefined
+      return row ?? null
+    }
+    return null
   },
 
   listFeedback: (resourceType: 'planning' | 'note', resourceId: string): Array<DbFeedback & { authorEmail: string | null; authorUsername: string | null }> => {

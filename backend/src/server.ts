@@ -6,7 +6,7 @@ import morgan from 'morgan'
 import bcrypt from 'bcryptjs'
 import { ZodError, z } from 'zod'
 import { getUser, getUserFromToken, requireAuth, signAccessToken } from './auth'
-import { db, type DbPlanningItem, type DbNote, type DbFile } from './db'
+import { db, type DbPlanningItem, type DbNote, type DbFile, type WorkspaceRole } from './db'
 import { buildCacheKey, maybeHandleCachedResponse, storeCacheAndSend, invalidateWorkspaceCache } from './cache'
 import path from 'node:path'
 import crypto from 'node:crypto'
@@ -394,7 +394,9 @@ function requireAdmin(req: express.Request, res: express.Response, next: express
 }
 
 // Workspace RBAC helpers
-type WorkspaceRole = 'STUDENT' | 'MENTOR' | 'BEGELEIDER'
+const VIEW_ROLES: WorkspaceRole[] = ['OWNER', 'EDITOR', 'COMMENTER', 'VIEWER']
+const COMMENT_ROLES: WorkspaceRole[] = ['OWNER', 'EDITOR', 'COMMENTER']
+const EDIT_ROLES: WorkspaceRole[] = ['OWNER', 'EDITOR']
 
 function getWorkspaceRole(userId: string, workspaceId: string): WorkspaceRole | null {
   return db.getMembershipRole(userId, workspaceId)
@@ -415,25 +417,46 @@ function requireWorkspaceRole(allowedRoles: WorkspaceRole[]) {
   }
 }
 
-function requireWorkspaceStudent(req: express.Request, res: express.Response, next: express.NextFunction) {
-  return requireWorkspaceRole(['STUDENT'])(req, res, next)
+function requireWorkspaceOwner(req: express.Request, res: express.Response, next: express.NextFunction) {
+  return requireWorkspaceRole(['OWNER'])(req, res, next)
+}
+
+function requireWorkspaceView(req: express.Request, res: express.Response, next: express.NextFunction) {
+  return requireWorkspaceRole(VIEW_ROLES)(req, res, next)
+}
+
+function requireWorkspaceComment(req: express.Request, res: express.Response, next: express.NextFunction) {
+  return requireWorkspaceRole(COMMENT_ROLES)(req, res, next)
+}
+
+function requireWorkspaceEdit(req: express.Request, res: express.Response, next: express.NextFunction) {
+  return requireWorkspaceRole(EDIT_ROLES)(req, res, next)
 }
 
 function canCreateInWorkspace(userId: string, workspaceId: string): boolean {
   const role = getWorkspaceRole(userId, workspaceId)
-  return role === 'STUDENT'
+  return !!role && EDIT_ROLES.includes(role)
 }
 
 function canEditInWorkspace(userId: string, workspaceId: string, _resourceOwnerId: string): boolean {
   const role = getWorkspaceRole(userId, workspaceId)
   if (!role) return false
-  // Any STUDENT can edit items within the workspace
-  return role === 'STUDENT'
+  return EDIT_ROLES.includes(role)
 }
 
 function canDeleteInWorkspace(userId: string, workspaceId: string, _resourceOwnerId: string): boolean {
   const role = getWorkspaceRole(userId, workspaceId)
-  return role === 'STUDENT'
+  return !!role && EDIT_ROLES.includes(role)
+}
+
+function canViewInWorkspace(userId: string, workspaceId: string): boolean {
+  const role = getWorkspaceRole(userId, workspaceId)
+  return !!role && VIEW_ROLES.includes(role)
+}
+
+function canCommentInWorkspace(userId: string, workspaceId: string): boolean {
+  const role = getWorkspaceRole(userId, workspaceId)
+  return !!role && COMMENT_ROLES.includes(role)
 }
 
 function getDbUserOr401(req: express.Request, res: express.Response) {
@@ -782,8 +805,9 @@ app.get('/events', asyncHandler(async (req, res) => {
   if (!u) return res.status(401).json({ error: 'unauthorized' })
   const workspaceId = String(req.query.workspaceId || '')
   if (!workspaceId) return res.status(400).json({ error: 'workspace_id_required' })
-  const role = db.getMembershipRole(u.id, workspaceId)
-  if (!role) return res.status(403).json({ error: 'not_member' })
+  if (!canViewInWorkspace(u.id, workspaceId)) {
+    return res.status(403).json({ error: 'insufficient_permissions' })
+  }
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -876,8 +900,9 @@ app.get('/file-meta', requireAuth, asyncHandler(async (req, res) => {
   const u = getDbUserOr401(req, res)
   if (!u) return
   const { workspaceId } = parseQuery(req, fileMetaListQuerySchema)
-  const role = db.getMembershipRole(u.id, workspaceId)
-  if (!role) return res.status(403).json({ error: 'not_member' })
+  if (!canViewInWorkspace(u.id, workspaceId)) {
+    return res.status(403).json({ error: 'insufficient_permissions' })
+  }
   const items = db.listFileMetaForWorkspace(workspaceId)
   return res.json({ items, workspaceId })
 }))
@@ -890,7 +915,7 @@ app.post('/file-meta', requireAuth, asyncHandler(async (req, res) => {
   const d = parsed.data
   const role = db.getMembershipRole(u.id, d.workspaceId)
   if (!role) return res.status(403).json({ error: 'not_member' })
-  if (!canCreateInWorkspace(u.id, d.workspaceId)) return res.status(403).json({ error: 'only_students_can_create' })
+  if (!canCreateInWorkspace(u.id, d.workspaceId)) return res.status(403).json({ error: 'insufficient_permissions' })
   const item = db.upsertFileMeta(d.workspaceId, d.groupKey, d.folder, d.labelsJson)
   broadcastWorkspace(d.workspaceId, 'file_meta')
   return res.json({ item, workspaceId: d.workspaceId })
@@ -919,8 +944,9 @@ app.get('/links', requireAuth, asyncHandler(async (req, res) => {
   const u = getDbUserOr401(req, res)
   if (!u) return
   const { workspaceId, fromType, fromId } = parseQuery(req, linksListQuerySchema)
-  const role = db.getMembershipRole(u.id, workspaceId)
-  if (!role) return res.status(403).json({ error: 'not_member' })
+  if (!canViewInWorkspace(u.id, workspaceId)) {
+    return res.status(403).json({ error: 'insufficient_permissions' })
+  }
   const items = db.listLinksForItem(workspaceId, fromType, fromId)
   return res.json({ items, workspaceId })
 }))
@@ -933,7 +959,7 @@ app.post('/links', requireAuth, asyncHandler(async (req, res) => {
   const d = parsed.data
   const role = db.getMembershipRole(u.id, d.workspaceId)
   if (!role) return res.status(403).json({ error: 'not_member' })
-  if (!canCreateInWorkspace(u.id, d.workspaceId)) return res.status(403).json({ error: 'only_students_can_create' })
+  if (!canCreateInWorkspace(u.id, d.workspaceId)) return res.status(403).json({ error: 'insufficient_permissions' })
   const items = db.replaceLinksForItem(d.workspaceId, d.fromType, d.fromId, d.links)
   broadcastWorkspace(d.workspaceId, 'links')
   return res.json({ items, workspaceId: d.workspaceId })
@@ -1039,10 +1065,8 @@ app.post('/files', requireAuth, asyncHandler(async (req, res) => {
   if (d.workspaceId) {
     const role = db.getMembershipRole(u.id, d.workspaceId)
     if (!role) return res.status(403).json({ error: 'not_member' })
-    
-    // Only STUDENT can upload files
     if (!canCreateInWorkspace(u.id, d.workspaceId)) {
-      return res.status(403).json({ error: 'only_students_can_create' })
+      return res.status(403).json({ error: 'insufficient_permissions' })
     }
     finalWorkspaceId = d.workspaceId
   }
@@ -1106,7 +1130,7 @@ app.delete('/files/:id', requireAuth, asyncHandler(async (req, res) => {
 
   // Check permissions
   if (file.workspaceId) {
-    // Workspace file - only STUDENT can delete
+    // Workspace file - only editors/owners can delete
     if (!canDeleteInWorkspace(u.id, file.workspaceId, file.userId)) {
       return res.status(403).json({ error: 'insufficient_permissions' })
     }
@@ -1307,9 +1331,9 @@ app.post('/notes', requireAuth, asyncHandler(async (req, res) => {
   const role = db.getMembershipRole(u.id, workspaceId)
   if (!role) return res.status(403).json({ error: 'not_member' })
 
-  // Only STUDENT can create notes
+  // Only editors/owners can create notes
   if (!canCreateInWorkspace(u.id, workspaceId)) {
-    return res.status(403).json({ error: 'only_students_can_create' })
+    return res.status(403).json({ error: 'insufficient_permissions' })
   }
 
   // For updates, check ownership
@@ -1526,7 +1550,7 @@ app.post('/planning', requireAuth, asyncHandler(async (req, res) => {
     // Check if item belongs to workspace
     if (existing.groupId !== workspaceId) return res.status(403).json({ error: 'wrong_workspace' })
 
-    // Check permissions: only STUDENT can edit, and only own items
+    // Check permissions: only editors/owners can edit
     if (!canEditInWorkspace(u.id, workspaceId, existing.userId)) {
       return res.status(403).json({ error: 'insufficient_permissions' })
     }
@@ -1553,9 +1577,9 @@ app.post('/planning', requireAuth, asyncHandler(async (req, res) => {
     return res.json({ item, workspaceId })
   }
 
-  // create path - only STUDENT can create
+  // create path - only editors/owners can create
   if (!canCreateInWorkspace(u.id, workspaceId)) {
-    return res.status(403).json({ error: 'only_students_can_create' })
+    return res.status(403).json({ error: 'insufficient_permissions' })
   }
 
   const normalizedTagsJson = normalizeTagsJson(d.tagsJson ?? d.tags, '[]')
@@ -1617,8 +1641,9 @@ app.get('/reports/stage', requireAuth, asyncHandler(async (req, res) => {
   if (toDate > maxTo) return res.status(400).json({ error: 'range_too_large' })
 
   if (!u.isAdmin) {
-    const role = db.getMembershipRole(u.id, workspaceId)
-    if (!role) return res.status(403).json({ error: 'not_member' })
+    if (!canViewInWorkspace(u.id, workspaceId)) {
+      return res.status(403).json({ error: 'insufficient_permissions' })
+    }
   }
 
   res.setTimeout(60000)
@@ -2081,13 +2106,13 @@ app.post('/workspaces', requireAuth, asyncHandler(async (req, res) => {
   return res.json({ workspace })
 }))
 
-// Update workspace (only STUDENT/owner)
+// Update workspace (only owner)
 const updateWorkspaceSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   description: z.string().max(500).optional().nullable(),
 })
 
-app.patch('/workspaces/:id', requireAuth, requireWorkspaceStudent, (req, res) => {
+app.patch('/workspaces/:id', requireAuth, requireWorkspaceOwner, (req, res) => {
   const u = getUser(req)!
   const workspaceId = req.params.id
   const parsed = updateWorkspaceSchema.safeParse(req.body)
@@ -2103,14 +2128,15 @@ app.patch('/workspaces/:id', requireAuth, requireWorkspaceStudent, (req, res) =>
 // Invite user to workspace
 const inviteToWorkspaceSchema = z.object({
   email: z.string().email(),
-  role: z.enum(['MENTOR', 'BEGELEIDER']), // STUDENT can only invite MENTOR/BEGELEIDER
+  role: z.enum(['OWNER', 'EDITOR', 'COMMENTER', 'VIEWER']).optional(),
 })
 
-app.post('/workspaces/:id/invite', requireAuth, requireWorkspaceStudent, asyncHandler(async (req, res) => {
+app.post('/workspaces/:id/invite', requireAuth, requireWorkspaceOwner, asyncHandler(async (req, res) => {
   const u = getDbUserOr401(req, res)
   if (!u) return
   const workspaceId = req.params.id
   const { email, role } = parseBody(req, inviteToWorkspaceSchema)
+  const finalRole = role ?? 'VIEWER'
 
   // Check if user already exists
   const existingUser = db.findUserByEmail(email)
@@ -2128,7 +2154,7 @@ app.post('/workspaces/:id/invite', requireAuth, requireWorkspaceStudent, asyncHa
   const invitation = db.createWorkspaceInvitation({
     workspaceId,
     email,
-    role,
+    role: finalRole,
     invitedBy: u.id,
     tokenHash,
     expiresAt,
@@ -2141,11 +2167,11 @@ app.post('/workspaces/:id/invite', requireAuth, requireWorkspaceStudent, asyncHa
   await sendMail({
     to: email,
     subject: `Stage Planner: workspace uitnodiging`,
-    text: `Je bent uitgenodigd voor de workspace "${workspace.name}" (${role}).\n\nAccepteer de uitnodiging:\n${inviteUrl}\n\nDeze link is 7 dagen geldig.`,
+    text: `Je bent uitgenodigd voor de workspace "${workspace.name}" (${finalRole}).\n\nAccepteer de uitnodiging:\n${inviteUrl}\n\nDeze link is 7 dagen geldig.`,
   })
 
-  audit(req, 'workspace.invite', 'workspace', workspaceId, { email, role })
-  return res.json({ invitation: { id: invitation.id, email, role, expiresAt } })
+  audit(req, 'workspace.invite', 'workspace', workspaceId, { email, role: finalRole })
+  return res.json({ invitation: { id: invitation.id, email, role: finalRole, expiresAt } })
 }))
 
 // Accept workspace invitation
@@ -2179,34 +2205,41 @@ app.get('/workspaces/:id/members', requireAuth, asyncHandler(async (req, res) =>
   const u = getUser(req)!
   const workspaceId = req.params.id
   
-  // Check if user is member
-  const role = db.getMembershipRole(u.id, workspaceId)
-  if (!role) return res.status(403).json({ error: 'not_member' })
+  if (!canViewInWorkspace(u.id, workspaceId)) {
+    return res.status(403).json({ error: 'insufficient_permissions' })
+  }
 
   const members = db.listGroupMembers(workspaceId)
   return res.json(members)
 }))
 
-// List workspace invitations (only for STUDENT/owner)
-app.get('/workspaces/:id/invitations', requireAuth, requireWorkspaceStudent, asyncHandler(async (req, res) => {
+// List workspace invitations (only owner)
+app.get('/workspaces/:id/invitations', requireAuth, requireWorkspaceOwner, asyncHandler(async (req, res) => {
   const workspaceId = req.params.id
   const invitations = db.listWorkspaceInvitations(workspaceId)
   return res.json(invitations)
 }))
 
-// Update member role (only STUDENT/owner)
+// Update member role (only owner)
 const updateMemberRoleSchema = z.object({
   userId: z.string().min(1),
-  role: z.enum(['STUDENT', 'MENTOR', 'BEGELEIDER']),
+  role: z.enum(['OWNER', 'EDITOR', 'COMMENTER', 'VIEWER']),
 })
 
-app.patch('/workspaces/:id/members', requireAuth, requireWorkspaceStudent, (req, res) => {
+app.patch('/workspaces/:id/members', requireAuth, requireWorkspaceOwner, (req, res) => {
   const u = getUser(req)!
   const workspaceId = req.params.id
   const { userId, role } = parseBody(req, updateMemberRoleSchema)
 
   // Can't change your own role
   if (userId === u.id) return res.status(400).json({ error: 'cannot_change_own_role' })
+
+  const currentRole = db.getMembershipRole(userId, workspaceId)
+  if (!currentRole) return res.status(404).json({ error: 'member_not_found' })
+  if (currentRole === 'OWNER' && role !== 'OWNER') {
+    const ownerCount = db.countGroupAdmins(workspaceId)
+    if (ownerCount <= 1) return res.status(400).json({ error: 'last_owner' })
+  }
 
   const updated = db.updateWorkspaceMemberRole(workspaceId, userId, role, u.id)
   if (!updated) return res.status(404).json({ error: 'member_not_found' })
@@ -2215,11 +2248,17 @@ app.patch('/workspaces/:id/members', requireAuth, requireWorkspaceStudent, (req,
   return res.json({ ok: true })
 })
 
-// Remove member from workspace (only STUDENT/owner)
-app.delete('/workspaces/:id/members/:userId', requireAuth, requireWorkspaceStudent, (req, res) => {
+// Remove member from workspace (only owner)
+app.delete('/workspaces/:id/members/:userId', requireAuth, requireWorkspaceOwner, (req, res) => {
   const u = getUser(req)!
   const workspaceId = req.params.id
   const userId = req.params.userId
+
+  const currentRole = db.getMembershipRole(userId, workspaceId)
+  if (currentRole === 'OWNER') {
+    const ownerCount = db.countGroupAdmins(workspaceId)
+    if (ownerCount <= 1) return res.status(400).json({ error: 'last_owner' })
+  }
 
   const removed = db.removeWorkspaceMember(workspaceId, userId, u.id)
   if (!removed) return res.status(404).json({ error: 'member_not_found' })
@@ -2241,7 +2280,7 @@ app.post('/feedback', requireAuth, asyncHandler(async (req, res) => {
   if (!u) return
   const { resourceType, resourceId, content } = parseBody(req, createFeedbackSchema)
 
-  // Check if user can add feedback (must be MENTOR or BEGELEIDER in workspace)
+  // Check if user can add feedback (commenter/editor/owner)
   // First, find which workspace this resource belongs to
   let workspaceId: string | null = null
   if (resourceType === 'planning') {
@@ -2256,10 +2295,8 @@ app.post('/feedback', requireAuth, asyncHandler(async (req, res) => {
 
   if (!workspaceId) return res.status(404).json({ error: 'resource_not_found' })
 
-  // Check if user is MENTOR or BEGELEIDER
-  const role = db.getMembershipRole(u.id, workspaceId)
-  if (role !== 'MENTOR' && role !== 'BEGELEIDER') {
-    return res.status(403).json({ error: 'only_mentors_can_add_feedback' })
+  if (!canCommentInWorkspace(u.id, workspaceId)) {
+    return res.status(403).json({ error: 'insufficient_permissions' })
   }
 
   const feedback = db.createFeedback({
@@ -2295,8 +2332,9 @@ app.get('/feedback/:resourceType/:resourceId', requireAuth, (req, res) => {
 
   if (!workspaceId) return res.status(404).json({ error: 'resource_not_found' })
 
-  const role = db.getMembershipRole(u.id, workspaceId)
-  if (!role) return res.status(403).json({ error: 'not_member' })
+  if (!canViewInWorkspace(u.id, workspaceId)) {
+    return res.status(403).json({ error: 'insufficient_permissions' })
+  }
 
   const feedback = db.listFeedback(resourceType as 'planning' | 'note', resourceId)
   return res.json({ feedback })
@@ -2312,8 +2350,25 @@ app.patch('/feedback/:id', requireAuth, (req, res) => {
   const feedbackId = req.params.id
   const { content } = parseBody(req, updateFeedbackSchema)
 
-  // Note: We'd need to get feedback first to check ownership, but for simplicity
-  // we allow users to update their own feedback
+  const feedback = db.getFeedbackById(feedbackId)
+  if (!feedback) return res.status(404).json({ error: 'not_found' })
+
+  let workspaceId: string | null = null
+  if (feedback.resourceType === 'planning') {
+    const item = db.getPlanningById(feedback.resourceId)
+    if (!item) return res.status(404).json({ error: 'resource_not_found' })
+    workspaceId = item.groupId
+  } else {
+    const note = db.getNoteById(feedback.resourceId)
+    if (!note) return res.status(404).json({ error: 'resource_not_found' })
+    workspaceId = note.groupId
+  }
+
+  if (!workspaceId || !canCommentInWorkspace(u.id, workspaceId)) {
+    return res.status(403).json({ error: 'insufficient_permissions' })
+  }
+
+  // Only allow authors to update their own feedback
   const updated = db.updateFeedback(feedbackId, u.id, content)
   if (!updated) return res.status(404).json({ error: 'not_found' })
 
@@ -2325,6 +2380,24 @@ app.delete('/feedback/:id', requireAuth, (req, res) => {
   const u = getDbUserOr401(req, res)
   if (!u) return
   const feedbackId = req.params.id
+
+  const feedback = db.getFeedbackById(feedbackId)
+  if (!feedback) return res.status(404).json({ error: 'not_found' })
+
+  let workspaceId: string | null = null
+  if (feedback.resourceType === 'planning') {
+    const item = db.getPlanningById(feedback.resourceId)
+    if (!item) return res.status(404).json({ error: 'resource_not_found' })
+    workspaceId = item.groupId
+  } else {
+    const note = db.getNoteById(feedback.resourceId)
+    if (!note) return res.status(404).json({ error: 'resource_not_found' })
+    workspaceId = note.groupId
+  }
+
+  if (!workspaceId || !canCommentInWorkspace(u.id, workspaceId)) {
+    return res.status(403).json({ error: 'insufficient_permissions' })
+  }
 
   const deleted = db.deleteFeedback(feedbackId, u.id)
   if (!deleted) return res.status(404).json({ error: 'not_found' })

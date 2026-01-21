@@ -13,6 +13,7 @@
 - Cache smoke test script (`testscripts/cache-smoke.sh`)
 - Bulk actions for planning items (multi-select + status/priority/tags update)
 - Stage report export (PDF/CSV) from the dashboard
+- Workspace roles (owner/editor/commenter/viewer) with permission checks
 
 ### Changed
 - Files are stored server-side (SQLite BLOBs)

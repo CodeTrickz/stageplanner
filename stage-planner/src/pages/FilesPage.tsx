@@ -27,6 +27,7 @@ import { categoryLabel, categoryOrder, fetchFileBlob, fileCategory, formatBytes,
 import { makeGroupKey } from '../utils/groupKey'
 import { useWorkspace } from '../hooks/useWorkspace'
 import { useWorkspaceEvents } from '../hooks/useWorkspaceEvents'
+import { getWorkspacePermissions } from '../utils/permissions'
 
 type ServerFile = {
   id: string
@@ -84,6 +85,8 @@ export function FilesPage() {
   const [preview, setPreview] = useState<StoredFile | null>(null)
   const token = useApiToken()
   const { currentWorkspace } = useWorkspace()
+  const permissions = getWorkspacePermissions(currentWorkspace?.role)
+  const canEdit = permissions.canEdit
   const [q, setQ] = useState('')
   const [folder, setFolder] = useState<string>('__all__')
   const [sort, setSort] = useState<'recent' | 'name'>('recent')
@@ -212,6 +215,7 @@ export function FilesPage() {
   }
 
   async function onPickFiles(fileList: FileList | null) {
+    if (!canEdit) return
     setError(null)
     if (!token) {
       setError('Login vereist om bestanden op de server te bewaren.')
@@ -280,6 +284,7 @@ export function FilesPage() {
   }
 
   async function remove(id: string) {
+    if (!canEdit) return
     if (!token) return
     try {
       await apiFetch(`/files/${id}`, {
@@ -297,6 +302,7 @@ export function FilesPage() {
   }
 
   async function saveMeta(groupKey: string) {
+    if (!canEdit) return
     if (!token || !currentWorkspace?.id) return
     const labels = editLabels
       .split(',')
@@ -421,7 +427,7 @@ export function FilesPage() {
             <Button
               variant="contained"
               startIcon={<UploadFileIcon />}
-              disabled={!token || !currentWorkspace?.id}
+              disabled={!token || !currentWorkspace?.id || !canEdit}
               onClick={() => inputRef.current?.click()}
             >
               Upload bestanden
@@ -520,6 +526,7 @@ export function FilesPage() {
                         setEditLabels((g.labels || []).join(', '))
                         setExpanded((e) => ({ ...e, [g.groupKey]: true }))
                       }}
+                      disabled={!canEdit}
                     >
                       <EditOutlinedIcon />
                     </IconButton>
@@ -534,7 +541,7 @@ export function FilesPage() {
                     >
                       <DownloadIcon />
                     </IconButton>
-                    <IconButton aria-label="Verwijder" onClick={() => g.latest.id && remove(g.latest.id)}>
+                    <IconButton aria-label="Verwijder" onClick={() => g.latest.id && remove(g.latest.id)} disabled={!canEdit}>
                       <DeleteOutlineIcon />
                     </IconButton>
                     <IconButton
@@ -556,16 +563,18 @@ export function FilesPage() {
                             value={editFolder}
                             onChange={(e) => setEditFolder(e.target.value)}
                             sx={{ minWidth: 220 }}
+                            disabled={!canEdit}
                           />
                           <TextField
                             label="Labels (comma separated)"
                             value={editLabels}
                             onChange={(e) => setEditLabels(e.target.value)}
                             fullWidth
+                            disabled={!canEdit}
                           />
                           <Stack direction="row" spacing={1} justifyContent="flex-end">
                             <Button onClick={() => setEditing(null)}>Annuleer</Button>
-                            <Button variant="contained" onClick={() => void saveMeta(g.groupKey)}>
+                            <Button variant="contained" onClick={() => void saveMeta(g.groupKey)} disabled={!canEdit}>
                               Opslaan
                             </Button>
                           </Stack>

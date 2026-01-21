@@ -33,6 +33,7 @@ import { fetchFileBlob, formatBytes } from '../utils/files'
 import { apiFetch, useApiToken } from '../api/client'
 import { useWorkspace } from '../hooks/useWorkspace'
 import { useWorkspaceEvents } from '../hooks/useWorkspaceEvents'
+import { getWorkspacePermissions } from '../utils/permissions'
 
 type ServerNote = {
   id: string
@@ -125,6 +126,8 @@ function toStoredFile(file: ServerFile): StoredFile {
 export function NotesPage() {
   const token = useApiToken()
   const { currentWorkspace } = useWorkspace()
+  const permissions = getWorkspacePermissions(currentWorkspace?.role)
+  const canEdit = permissions.canEdit
   const [params] = useSearchParams()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [draft, setDraft] = useState<DraftNote>(() => ({
@@ -327,6 +330,7 @@ export function NotesPage() {
   }, [fileGroups, draft.attachmentGroupKeys])
 
   function newNote() {
+    if (!canEdit) return
     setSelectedId(null)
     setDraft({
       subject: '',
@@ -337,6 +341,7 @@ export function NotesPage() {
   }
 
   async function saveLinks(next: { planningId: string; fileKeys: string[] }, noteId: string) {
+    if (!canEdit) return
     if (!token || !currentWorkspace?.id) {
       setNoteLinks(next)
       return
@@ -367,6 +372,7 @@ export function NotesPage() {
   }
 
   async function save() {
+    if (!canEdit) return
     setStatus(null)
     if (!token || !currentWorkspace?.id) return
     try {
@@ -403,6 +409,7 @@ export function NotesPage() {
   }
 
   async function remove() {
+    if (!canEdit) return
     if (!draft.id) {
       newNote()
       return
@@ -488,7 +495,7 @@ export function NotesPage() {
           <Box sx={{ p: { xs: 1.5, sm: 2 } }}>
             <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
               <Typography sx={{ fontWeight: 800 }}>Opgeslagen</Typography>
-              <Button startIcon={<NoteAddIcon />} onClick={newNote}>
+              <Button startIcon={<NoteAddIcon />} onClick={newNote} disabled={!canEdit}>
                 Nieuw
               </Button>
             </Stack>
@@ -562,6 +569,7 @@ export function NotesPage() {
               label="Onderwerp"
               value={draft.subject}
               onChange={(e) => setDraft((d) => ({ ...d, subject: e.target.value }))}
+              disabled={!canEdit}
             />
 
             <Box>
@@ -574,6 +582,7 @@ export function NotesPage() {
                     <Switch
                       checked={htmlMode}
                       onChange={(e) => setHtmlMode(e.target.checked)}
+                      disabled={!canEdit}
                     />
                   }
                   label="HTML mode"
@@ -589,6 +598,7 @@ export function NotesPage() {
                   onChange={(e) => setDraft((d) => ({ ...d, body: e.target.value }))}
                   multiline
                   minRows={10}
+                  disabled={!canEdit}
                 />
               ) : (
                 <RichTextEditor value={draft.body} onChange={(html) => setDraft((d) => ({ ...d, body: html }))} />
@@ -606,6 +616,7 @@ export function NotesPage() {
                 }
                 setNoteLinks((prev) => ({ ...prev, planningId: val }))
               }}
+              disabled={!canEdit}
             >
               <MenuItem value="">(geen)</MenuItem>
               {(planning ?? []).map((p) => (
@@ -628,6 +639,7 @@ export function NotesPage() {
                   void saveLinks({ planningId: noteLinks.planningId, fileKeys: keys }, draft.id)
                 }
               }}
+              disabled={!canEdit}
               renderInput={(params) => (
                 <TextField
                   {...params}
@@ -681,10 +693,11 @@ export function NotesPage() {
                 variant="outlined"
                 startIcon={<DeleteOutlineIcon />}
                 onClick={() => void remove()}
+                disabled={!canEdit}
               >
                 Verwijder
               </Button>
-              <Button variant="contained" startIcon={<SaveIcon />} onClick={() => void save()}>
+              <Button variant="contained" startIcon={<SaveIcon />} onClick={() => void save()} disabled={!canEdit}>
                 Opslaan
               </Button>
             </Stack>

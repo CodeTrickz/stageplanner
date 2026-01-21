@@ -40,7 +40,7 @@ export async function updateWorkspace(
 export async function inviteToWorkspace(
   token: string,
   workspaceId: string,
-  data: { email: string; role: WorkspaceRole }
+  data: { email: string; role?: WorkspaceRole }
 ): Promise<{ invitation: WorkspaceInvitation }> {
   return apiFetch(`/workspaces/${workspaceId}/invite`, {
     method: 'POST',
@@ -100,7 +100,7 @@ export function useWorkspaces() {
       token ? createWorkspace(token, data) : Promise.reject(new Error('no_token')),
     updateWorkspace: (id: string, data: { name?: string; description?: string }) =>
       token ? updateWorkspace(token, id, data) : Promise.reject(new Error('no_token')),
-    inviteToWorkspace: (id: string, data: { email: string; role: WorkspaceRole }) =>
+    inviteToWorkspace: (id: string, data: { email: string; role?: WorkspaceRole }) =>
       token ? inviteToWorkspace(token, id, data) : Promise.reject(new Error('no_token')),
     acceptInvitation: (invitationToken: string) =>
       token ? acceptInvitation(token, invitationToken) : Promise.reject(new Error('no_token')),

@@ -82,6 +82,8 @@ export type DbTaskTemplate = {
   description: string | null
   durationMinutes: number
   tagsJson: string
+  priority: DbPlanningItem['priority']
+  status: DbPlanningItem['status']
   createdAt: number
   updatedAt: number
 }
@@ -322,6 +324,8 @@ function openSqlite() {
       description TEXT,
       duration_minutes INTEGER NOT NULL,
       tags_json TEXT NOT NULL DEFAULT '[]',
+      priority TEXT NOT NULL DEFAULT 'medium',
+      status TEXT NOT NULL DEFAULT 'todo',
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       FOREIGN KEY(group_id) REFERENCES groups(id) ON DELETE CASCADE
@@ -460,6 +464,23 @@ function openSqlite() {
   addMembershipCol('invited_by', 'invited_by TEXT')
   addMembershipCol('invited_at', 'invited_at INTEGER')
   addMembershipCol('status', "status TEXT DEFAULT 'active'")
+
+  // Ensure task_templates columns exist for older DBs
+  const templateCols = db
+    .prepare(`PRAGMA table_info(task_templates)`)
+    .all()
+    .map((r: any) => String(r.name))
+
+  function addTemplateCol(name: string, ddl: string) {
+    if (templateCols.includes(name)) return
+    try {
+      db.exec(`ALTER TABLE task_templates ADD COLUMN ${ddl};`)
+    } catch {
+      // ignore
+    }
+  }
+  addTemplateCol('priority', "priority TEXT NOT NULL DEFAULT 'medium'")
+  addTemplateCol('status', "status TEXT NOT NULL DEFAULT 'todo'")
 
   // Workspace invitations table
   db.exec(`
@@ -1553,7 +1574,7 @@ export const db = {
     if (sqliteDb) {
       return sqliteDb
         .prepare(
-          `SELECT id, group_id as groupId, title, description, duration_minutes as durationMinutes, tags_json as tagsJson, created_at as createdAt, updated_at as updatedAt
+          `SELECT id, group_id as groupId, title, description, duration_minutes as durationMinutes, tags_json as tagsJson, priority, status, created_at as createdAt, updated_at as updatedAt
            FROM task_templates WHERE group_id=? ORDER BY created_at DESC`,
         )
         .all(groupId) as DbTaskTemplate[]
@@ -1565,7 +1586,7 @@ export const db = {
     if (sqliteDb) {
       const row = sqliteDb
         .prepare(
-          `SELECT id, group_id as groupId, title, description, duration_minutes as durationMinutes, tags_json as tagsJson, created_at as createdAt, updated_at as updatedAt
+          `SELECT id, group_id as groupId, title, description, duration_minutes as durationMinutes, tags_json as tagsJson, priority, status, created_at as createdAt, updated_at as updatedAt
            FROM task_templates WHERE id=?`,
         )
         .get(id) as DbTaskTemplate | undefined
@@ -1580,6 +1601,8 @@ export const db = {
     description?: string | null
     durationMinutes: number
     tagsJson?: string
+    priority?: DbPlanningItem['priority']
+    status?: DbPlanningItem['status']
   }): DbTaskTemplate => {
     const t = now()
     const template: DbTaskTemplate = {
@@ -1589,14 +1612,16 @@ export const db = {
       description: input.description ?? null,
       durationMinutes: input.durationMinutes,
       tagsJson: input.tagsJson ?? '[]',
+      priority: input.priority ?? 'medium',
+      status: input.status ?? 'todo',
       createdAt: t,
       updatedAt: t,
     }
     if (sqliteDb) {
       sqliteDb
         .prepare(
-          `INSERT INTO task_templates (id, group_id, title, description, duration_minutes, tags_json, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO task_templates (id, group_id, title, description, duration_minutes, tags_json, priority, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           template.id,
@@ -1605,6 +1630,8 @@ export const db = {
           template.description,
           template.durationMinutes,
           template.tagsJson,
+          template.priority,
+          template.status,
           template.createdAt,
           template.updatedAt,
         )
@@ -1619,6 +1646,8 @@ export const db = {
       description: string | null
       durationMinutes: number
       tagsJson: string
+      priority: DbPlanningItem['priority']
+      status: DbPlanningItem['status']
     }>,
   ): DbTaskTemplate | null => {
     if (!sqliteDb) return null
@@ -1630,13 +1659,15 @@ export const db = {
       description: updates.description !== undefined ? updates.description : current.description,
       durationMinutes: updates.durationMinutes ?? current.durationMinutes,
       tagsJson: updates.tagsJson ?? current.tagsJson,
+      priority: updates.priority ?? current.priority,
+      status: updates.status ?? current.status,
       updatedAt: now(),
     }
     sqliteDb
       .prepare(
-        `UPDATE task_templates SET title=?, description=?, duration_minutes=?, tags_json=?, updated_at=? WHERE id=?`,
+        `UPDATE task_templates SET title=?, description=?, duration_minutes=?, tags_json=?, priority=?, status=?, updated_at=? WHERE id=?`,
       )
-      .run(next.title, next.description, next.durationMinutes, next.tagsJson, next.updatedAt, id)
+      .run(next.title, next.description, next.durationMinutes, next.tagsJson, next.priority, next.status, next.updatedAt, id)
     return next
   },
 

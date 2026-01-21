@@ -1452,6 +1452,8 @@ const taskTemplateCreateSchema = z.object({
   title: z.string().min(1).max(200),
   description: z.string().max(5000).optional().nullable(),
   durationMinutes: z.number().int().min(5).max(600),
+  priority: z.enum(['low', 'medium', 'high']).optional(),
+  status: z.enum(['todo', 'in_progress', 'done']).optional(),
   tags: z.array(z.string().max(64)).max(50).optional(),
   tagsJson: z.string().max(2000).optional(),
 })
@@ -1460,6 +1462,8 @@ const taskTemplateUpdateSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   description: z.string().max(5000).optional().nullable(),
   durationMinutes: z.number().int().min(5).max(600).optional(),
+  priority: z.enum(['low', 'medium', 'high']).optional(),
+  status: z.enum(['todo', 'in_progress', 'done']).optional(),
   tags: z.array(z.string().max(64)).max(50).optional(),
   tagsJson: z.string().max(2000).optional(),
 })
@@ -1492,6 +1496,8 @@ app.get('/task-templates', requireAuth, asyncHandler(async (req, res) => {
     description: t.description,
     durationMinutes: t.durationMinutes,
     tags: parseTagsJson(t.tagsJson),
+    priority: t.priority,
+    status: t.status,
     workspaceId: t.groupId,
     createdAt: t.createdAt,
     updatedAt: t.updatedAt,
@@ -1513,6 +1519,8 @@ app.post('/task-templates', requireAuth, asyncHandler(async (req, res) => {
     description: d.description ?? null,
     durationMinutes: d.durationMinutes,
     tagsJson,
+    priority: d.priority ?? 'medium',
+    status: d.status ?? 'todo',
   })
   audit(req, 'task_template.create', 'task_template', template.id, { workspaceId: d.workspaceId })
   return res.json({
@@ -1522,6 +1530,8 @@ app.post('/task-templates', requireAuth, asyncHandler(async (req, res) => {
       description: template.description,
       durationMinutes: template.durationMinutes,
       tags: parseTagsJson(template.tagsJson),
+      priority: template.priority,
+      status: template.status,
       workspaceId: template.groupId,
       createdAt: template.createdAt,
       updatedAt: template.updatedAt,
@@ -1545,6 +1555,8 @@ app.patch('/task-templates/:id', requireAuth, asyncHandler(async (req, res) => {
     description: d.description,
     durationMinutes: d.durationMinutes,
     tagsJson,
+    priority: d.priority,
+    status: d.status,
   })
   if (!updated) return res.status(404).json({ error: 'not_found' })
   audit(req, 'task_template.update', 'task_template', templateId, { workspaceId: existing.groupId })
@@ -1555,6 +1567,8 @@ app.patch('/task-templates/:id', requireAuth, asyncHandler(async (req, res) => {
       description: updated.description,
       durationMinutes: updated.durationMinutes,
       tags: parseTagsJson(updated.tagsJson),
+      priority: updated.priority,
+      status: updated.status,
       workspaceId: updated.groupId,
       createdAt: updated.createdAt,
       updatedAt: updated.updatedAt,
@@ -1606,8 +1620,8 @@ app.post('/task-templates/:id/apply', requireAuth, asyncHandler(async (req, res)
       title: template.title,
       notes: template.description ?? null,
       tagsJson: template.tagsJson ?? '[]',
-      priority: 'medium',
-      status: 'todo',
+      priority: template.priority ?? 'medium',
+      status: template.status ?? 'todo',
     })
     created.push(item)
   }

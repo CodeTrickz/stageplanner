@@ -85,6 +85,8 @@ type TaskTemplate = {
   description?: string | null
   durationMinutes: number
   tags: string[]
+  priority?: ServerPlanningItem['priority']
+  status?: ServerPlanningItem['status']
 }
 
 type TaskTemplateDraft = {
@@ -93,6 +95,8 @@ type TaskTemplateDraft = {
   description: string
   durationMinutes: number
   tags: string
+  priority: ServerPlanningItem['priority']
+  status: ServerPlanningItem['status']
 }
 
 type Draft = {
@@ -186,6 +190,8 @@ export function PlanningPage() {
     description: '',
     durationMinutes: 60,
     tags: '',
+    priority: 'medium',
+    status: 'todo',
   })
   const [templateSaving, setTemplateSaving] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
@@ -666,7 +672,7 @@ export function PlanningPage() {
   }
 
   function resetTemplateDraft() {
-    setTemplateDraft({ title: '', description: '', durationMinutes: 60, tags: '' })
+    setTemplateDraft({ title: '', description: '', durationMinutes: 60, tags: '', priority: 'medium', status: 'todo' })
   }
 
   function startEditTemplate(template: TaskTemplate) {
@@ -676,6 +682,8 @@ export function PlanningPage() {
       description: template.description ?? '',
       durationMinutes: template.durationMinutes,
       tags: template.tags.join(', '),
+      priority: template.priority ?? 'medium',
+      status: template.status ?? 'todo',
     })
   }
 
@@ -693,6 +701,8 @@ export function PlanningPage() {
         title: templateDraft.title.trim(),
         description: templateDraft.description.trim() || null,
         durationMinutes: Math.max(5, Math.min(600, Math.round(templateDraft.durationMinutes))),
+        priority: templateDraft.priority,
+        status: templateDraft.status,
         tags: templateDraft.tags
           .split(',')
           .map((t) => t.trim())
@@ -708,6 +718,8 @@ export function PlanningPage() {
             title: payload.title,
             description: payload.description,
             durationMinutes: payload.durationMinutes,
+            priority: payload.priority,
+            status: payload.status,
             tags: payload.tags,
           }),
         })
@@ -849,6 +861,34 @@ export function PlanningPage() {
                     disabled={templateSaving}
                   />
                   <TextField
+                    select
+                    label="Prioriteit"
+                    size="small"
+                    value={templateDraft.priority}
+                    onChange={(e) =>
+                      setTemplateDraft((d) => ({ ...d, priority: e.target.value as ServerPlanningItem['priority'] }))
+                    }
+                    disabled={templateSaving}
+                  >
+                    <MenuItem value="low">Low</MenuItem>
+                    <MenuItem value="medium">Medium</MenuItem>
+                    <MenuItem value="high">High</MenuItem>
+                  </TextField>
+                  <TextField
+                    select
+                    label="Status"
+                    size="small"
+                    value={templateDraft.status}
+                    onChange={(e) =>
+                      setTemplateDraft((d) => ({ ...d, status: e.target.value as ServerPlanningItem['status'] }))
+                    }
+                    disabled={templateSaving}
+                  >
+                    <MenuItem value="todo">Todo</MenuItem>
+                    <MenuItem value="in_progress">In progress</MenuItem>
+                    <MenuItem value="done">Done</MenuItem>
+                  </TextField>
+                  <TextField
                     label="Tags (comma-separated)"
                     size="small"
                     value={templateDraft.tags}
@@ -876,7 +916,7 @@ export function PlanningPage() {
                         {t.title}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {t.durationMinutes} min
+                        {t.durationMinutes} min • {t.priority ?? 'medium'} • {t.status ?? 'todo'}
                       </Typography>
                       {canEdit && (
                         <Stack direction="row" spacing={0.5}>

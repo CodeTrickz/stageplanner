@@ -1,4 +1,4 @@
-FROM node:20-bookworm-slim AS backend-build
+FROM node:25-bookworm-slim AS backend-build
 WORKDIR /app/backend
 
 COPY backend/package.json backend/package-lock.json ./
@@ -8,7 +8,7 @@ COPY backend/tsconfig.json ./
 COPY backend/src ./src
 RUN npm run build
 
-FROM node:20-bookworm-slim AS frontend-build
+FROM node:25-bookworm-slim AS frontend-build
 WORKDIR /app/stage-planner
 
 ARG VITE_IDLE_LOGOUT_MINUTES

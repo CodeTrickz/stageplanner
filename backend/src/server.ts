@@ -1454,6 +1454,7 @@ const taskTemplateCreateSchema = z.object({
   durationMinutes: z.number().int().min(5).max(600),
   priority: z.enum(['low', 'medium', 'high']).optional(),
   status: z.enum(['todo', 'in_progress', 'done']).optional(),
+  stageType: z.enum(['none', 'work', 'home']).optional(),
   tags: z.array(z.string().max(64)).max(50).optional(),
   tagsJson: z.string().max(2000).optional(),
 })
@@ -1464,6 +1465,7 @@ const taskTemplateUpdateSchema = z.object({
   durationMinutes: z.number().int().min(5).max(600).optional(),
   priority: z.enum(['low', 'medium', 'high']).optional(),
   status: z.enum(['todo', 'in_progress', 'done']).optional(),
+  stageType: z.enum(['none', 'work', 'home']).optional(),
   tags: z.array(z.string().max(64)).max(50).optional(),
   tagsJson: z.string().max(2000).optional(),
 })
@@ -1498,6 +1500,7 @@ app.get('/task-templates', requireAuth, asyncHandler(async (req, res) => {
     tags: parseTagsJson(t.tagsJson),
     priority: t.priority,
     status: t.status,
+    stageType: t.stageType,
     workspaceId: t.groupId,
     createdAt: t.createdAt,
     updatedAt: t.updatedAt,
@@ -1521,6 +1524,7 @@ app.post('/task-templates', requireAuth, asyncHandler(async (req, res) => {
     tagsJson,
     priority: d.priority ?? 'medium',
     status: d.status ?? 'todo',
+    stageType: d.stageType ?? 'none',
   })
   audit(req, 'task_template.create', 'task_template', template.id, { workspaceId: d.workspaceId })
   return res.json({
@@ -1532,6 +1536,7 @@ app.post('/task-templates', requireAuth, asyncHandler(async (req, res) => {
       tags: parseTagsJson(template.tagsJson),
       priority: template.priority,
       status: template.status,
+      stageType: template.stageType,
       workspaceId: template.groupId,
       createdAt: template.createdAt,
       updatedAt: template.updatedAt,
@@ -1557,6 +1562,7 @@ app.patch('/task-templates/:id', requireAuth, asyncHandler(async (req, res) => {
     tagsJson,
     priority: d.priority,
     status: d.status,
+    stageType: d.stageType,
   })
   if (!updated) return res.status(404).json({ error: 'not_found' })
   audit(req, 'task_template.update', 'task_template', templateId, { workspaceId: existing.groupId })
@@ -1569,6 +1575,7 @@ app.patch('/task-templates/:id', requireAuth, asyncHandler(async (req, res) => {
       tags: parseTagsJson(updated.tagsJson),
       priority: updated.priority,
       status: updated.status,
+      stageType: updated.stageType,
       workspaceId: updated.groupId,
       createdAt: updated.createdAt,
       updatedAt: updated.updatedAt,
@@ -1610,6 +1617,11 @@ app.post('/task-templates/:id/apply', requireAuth, asyncHandler(async (req, res)
   const startTime = '09:00'
   const endTime = addMinutesToTime(startTime, template.durationMinutes)
 
+  const stageTag =
+    template.stageType === 'work' ? 'stage:work' : template.stageType === 'home' ? 'stage:home' : null
+  const baseTags = parseTagsJson(template.tagsJson)
+  const tagsJson = JSON.stringify(stageTag ? [stageTag, ...baseTags] : baseTags)
+
   for (let i = 0; i < 7; i += 1) {
     const day = addDaysUtc(monday, i)
     const item = db.upsertPlanning(u.id, {
@@ -1619,7 +1631,7 @@ app.post('/task-templates/:id/apply', requireAuth, asyncHandler(async (req, res)
       end: endTime,
       title: template.title,
       notes: template.description ?? null,
-      tagsJson: template.tagsJson ?? '[]',
+      tagsJson,
       priority: template.priority ?? 'medium',
       status: template.status ?? 'todo',
     })

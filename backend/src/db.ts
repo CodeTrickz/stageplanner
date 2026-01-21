@@ -84,6 +84,7 @@ export type DbTaskTemplate = {
   tagsJson: string
   priority: DbPlanningItem['priority']
   status: DbPlanningItem['status']
+  stageType: 'none' | 'work' | 'home'
   createdAt: number
   updatedAt: number
 }
@@ -326,6 +327,7 @@ function openSqlite() {
       tags_json TEXT NOT NULL DEFAULT '[]',
       priority TEXT NOT NULL DEFAULT 'medium',
       status TEXT NOT NULL DEFAULT 'todo',
+      stage_type TEXT NOT NULL DEFAULT 'none',
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       FOREIGN KEY(group_id) REFERENCES groups(id) ON DELETE CASCADE
@@ -481,6 +483,7 @@ function openSqlite() {
   }
   addTemplateCol('priority', "priority TEXT NOT NULL DEFAULT 'medium'")
   addTemplateCol('status', "status TEXT NOT NULL DEFAULT 'todo'")
+  addTemplateCol('stage_type', "stage_type TEXT NOT NULL DEFAULT 'none'")
 
   // Workspace invitations table
   db.exec(`
@@ -1574,7 +1577,7 @@ export const db = {
     if (sqliteDb) {
       return sqliteDb
         .prepare(
-          `SELECT id, group_id as groupId, title, description, duration_minutes as durationMinutes, tags_json as tagsJson, priority, status, created_at as createdAt, updated_at as updatedAt
+          `SELECT id, group_id as groupId, title, description, duration_minutes as durationMinutes, tags_json as tagsJson, priority, status, stage_type as stageType, created_at as createdAt, updated_at as updatedAt
            FROM task_templates WHERE group_id=? ORDER BY created_at DESC`,
         )
         .all(groupId) as DbTaskTemplate[]
@@ -1586,7 +1589,7 @@ export const db = {
     if (sqliteDb) {
       const row = sqliteDb
         .prepare(
-          `SELECT id, group_id as groupId, title, description, duration_minutes as durationMinutes, tags_json as tagsJson, priority, status, created_at as createdAt, updated_at as updatedAt
+          `SELECT id, group_id as groupId, title, description, duration_minutes as durationMinutes, tags_json as tagsJson, priority, status, stage_type as stageType, created_at as createdAt, updated_at as updatedAt
            FROM task_templates WHERE id=?`,
         )
         .get(id) as DbTaskTemplate | undefined
@@ -1603,6 +1606,7 @@ export const db = {
     tagsJson?: string
     priority?: DbPlanningItem['priority']
     status?: DbPlanningItem['status']
+    stageType?: 'none' | 'work' | 'home'
   }): DbTaskTemplate => {
     const t = now()
     const template: DbTaskTemplate = {
@@ -1614,14 +1618,15 @@ export const db = {
       tagsJson: input.tagsJson ?? '[]',
       priority: input.priority ?? 'medium',
       status: input.status ?? 'todo',
+      stageType: input.stageType ?? 'none',
       createdAt: t,
       updatedAt: t,
     }
     if (sqliteDb) {
       sqliteDb
         .prepare(
-          `INSERT INTO task_templates (id, group_id, title, description, duration_minutes, tags_json, priority, status, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO task_templates (id, group_id, title, description, duration_minutes, tags_json, priority, status, stage_type, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           template.id,
@@ -1632,6 +1637,7 @@ export const db = {
           template.tagsJson,
           template.priority,
           template.status,
+          template.stageType,
           template.createdAt,
           template.updatedAt,
         )
@@ -1648,6 +1654,7 @@ export const db = {
       tagsJson: string
       priority: DbPlanningItem['priority']
       status: DbPlanningItem['status']
+      stageType: 'none' | 'work' | 'home'
     }>,
   ): DbTaskTemplate | null => {
     if (!sqliteDb) return null
@@ -1661,13 +1668,14 @@ export const db = {
       tagsJson: updates.tagsJson ?? current.tagsJson,
       priority: updates.priority ?? current.priority,
       status: updates.status ?? current.status,
+      stageType: updates.stageType ?? current.stageType,
       updatedAt: now(),
     }
     sqliteDb
       .prepare(
-        `UPDATE task_templates SET title=?, description=?, duration_minutes=?, tags_json=?, priority=?, status=?, updated_at=? WHERE id=?`,
+        `UPDATE task_templates SET title=?, description=?, duration_minutes=?, tags_json=?, priority=?, status=?, stage_type=?, updated_at=? WHERE id=?`,
       )
-      .run(next.title, next.description, next.durationMinutes, next.tagsJson, next.priority, next.status, next.updatedAt, id)
+      .run(next.title, next.description, next.durationMinutes, next.tagsJson, next.priority, next.status, next.stageType, next.updatedAt, id)
     return next
   },
 

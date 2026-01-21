@@ -87,6 +87,7 @@ type TaskTemplate = {
   tags: string[]
   priority?: ServerPlanningItem['priority']
   status?: ServerPlanningItem['status']
+  stageType?: Draft['stageType']
 }
 
 type TaskTemplateDraft = {
@@ -97,6 +98,7 @@ type TaskTemplateDraft = {
   tags: string
   priority: ServerPlanningItem['priority']
   status: ServerPlanningItem['status']
+  stageType: Draft['stageType']
 }
 
 type Draft = {
@@ -192,6 +194,7 @@ export function PlanningPage() {
     tags: '',
     priority: 'medium',
     status: 'todo',
+    stageType: 'none',
   })
   const [templateSaving, setTemplateSaving] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
@@ -672,7 +675,15 @@ export function PlanningPage() {
   }
 
   function resetTemplateDraft() {
-    setTemplateDraft({ title: '', description: '', durationMinutes: 60, tags: '', priority: 'medium', status: 'todo' })
+    setTemplateDraft({
+      title: '',
+      description: '',
+      durationMinutes: 60,
+      tags: '',
+      priority: 'medium',
+      status: 'todo',
+      stageType: 'none',
+    })
   }
 
   function startEditTemplate(template: TaskTemplate) {
@@ -684,6 +695,7 @@ export function PlanningPage() {
       tags: template.tags.join(', '),
       priority: template.priority ?? 'medium',
       status: template.status ?? 'todo',
+      stageType: template.stageType ?? 'none',
     })
   }
 
@@ -703,6 +715,7 @@ export function PlanningPage() {
         durationMinutes: Math.max(5, Math.min(600, Math.round(templateDraft.durationMinutes))),
         priority: templateDraft.priority,
         status: templateDraft.status,
+        stageType: templateDraft.stageType,
         tags: templateDraft.tags
           .split(',')
           .map((t) => t.trim())
@@ -720,6 +733,7 @@ export function PlanningPage() {
             durationMinutes: payload.durationMinutes,
             priority: payload.priority,
             status: payload.status,
+            stageType: payload.stageType,
             tags: payload.tags,
           }),
         })
@@ -889,6 +903,20 @@ export function PlanningPage() {
                     <MenuItem value="done">Done</MenuItem>
                   </TextField>
                   <TextField
+                    select
+                    label="Stage dag"
+                    size="small"
+                    value={templateDraft.stageType}
+                    onChange={(e) =>
+                      setTemplateDraft((d) => ({ ...d, stageType: e.target.value as Draft['stageType'] }))
+                    }
+                    disabled={templateSaving}
+                  >
+                    <MenuItem value="none">Niet</MenuItem>
+                    <MenuItem value="work">Stage werkdag</MenuItem>
+                    <MenuItem value="home">Thuis project</MenuItem>
+                  </TextField>
+                  <TextField
                     label="Tags (comma-separated)"
                     size="small"
                     value={templateDraft.tags}
@@ -917,6 +945,7 @@ export function PlanningPage() {
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
                         {t.durationMinutes} min • {t.priority ?? 'medium'} • {t.status ?? 'todo'}
+                        {t.stageType && t.stageType !== 'none' ? ` • stage ${t.stageType}` : ''}
                       </Typography>
                       {canEdit && (
                         <Stack direction="row" spacing={0.5}>

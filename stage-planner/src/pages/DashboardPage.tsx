@@ -1,9 +1,9 @@
 import LaunchIcon from '@mui/icons-material/Launch'
-import { Alert, Box, Button, Chip, Divider, IconButton, Paper, Stack, Typography } from '@mui/material'
+import { Alert, Box, Button, Chip, Divider, IconButton, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSettings } from '../app/settings'
-import { apiFetch, useApiToken } from '../api/client'
+import { API_BASE, apiFetch, useApiToken } from '../api/client'
 import { useWorkspace } from '../hooks/useWorkspace'
 import { useWorkspaceEvents } from '../hooks/useWorkspaceEvents'
 type ServerPlanningItem = {
@@ -126,10 +126,23 @@ export function DashboardPage() {
   const { currentWorkspace } = useWorkspace()
   const [items, setItems] = useState<ServerPlanningItem[]>([])
   const [refreshTick, setRefreshTick] = useState(0)
+  const [exportFrom, setExportFrom] = useState(stageStart || '')
+  const [exportTo, setExportTo] = useState(stageEnd || '')
+  const [exportFormat, setExportFormat] = useState<'pdf' | 'csv'>('pdf')
+  const [exportLoading, setExportLoading] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
 
   useWorkspaceEvents((evt) => {
     if (evt.type === 'planning') setRefreshTick((v) => v + 1)
   })
+
+  useEffect(() => {
+    if (stageStart && !exportFrom) setExportFrom(stageStart)
+  }, [stageStart, exportFrom])
+
+  useEffect(() => {
+    if (stageEnd && !exportTo) setExportTo(stageEnd)
+  }, [stageEnd, exportTo])
   const holidaySet = useMemo(() => {
     try {
       const arr = JSON.parse(stageHolidaysJson || '[]') as string[]
@@ -222,6 +235,47 @@ export function DashboardPage() {
     }
   }, [itemsSorted, today, nowMinutes, weekStartYmd, weekEnd, stageStart, stageEnd, holidaySet])
 
+  async function downloadStageReport() {
+    if (!token || !currentWorkspace?.id) return
+    if (!exportFrom || !exportTo) {
+      setExportError('Kies een geldige periode.')
+      return
+    }
+    setExportLoading(true)
+    setExportError(null)
+    try {
+      const url = `${API_BASE}/reports/stage?workspaceId=${encodeURIComponent(String(currentWorkspace.id))}&from=${encodeURIComponent(exportFrom)}&to=${encodeURIComponent(exportTo)}&format=${exportFormat}`
+      const res = await fetch(url, {
+        headers: { authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        const code = data?.error || `http_${res.status}`
+        if (code === 'range_too_large') {
+          throw new Error('De gekozen periode is te groot (max 6 maanden).')
+        }
+        if (code === 'not_member') {
+          throw new Error('Geen rechten voor deze workspace.')
+        }
+        throw new Error('Export mislukt. Controleer de parameters en probeer opnieuw.')
+      }
+      const blob = await res.blob()
+      const filename = `stage-rapport-${exportFrom}-${exportTo}.${exportFormat}`
+      const href = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = href
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(href)
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : 'Export mislukt.')
+    } finally {
+      setExportLoading(false)
+    }
+  }
+
   return (
     <Box sx={{ display: 'grid', gap: { xs: 1.5, sm: 2 } }}>
       <Stack direction="column" spacing={{ xs: 1.5, sm: 2 }} sx={{ '@media (min-width:900px)': { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' } }}>
@@ -263,6 +317,44 @@ export function DashboardPage() {
             Periode: {stageStart || 'onbekend'} – {stageEnd || 'onbekend'} •
             Gebruik planning met “Stage werkdag” om de 60 dagen bij te houden.
           </Typography>
+          <Divider sx={{ my: 1 }} />
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
+            <TextField
+              label="Van"
+              type="date"
+              value={exportFrom}
+              onChange={(e) => setExportFrom(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              size="small"
+            />
+            <TextField
+              label="Tot"
+              type="date"
+              value={exportTo}
+              onChange={(e) => setExportTo(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              size="small"
+            />
+            <TextField
+              label="Formaat"
+              select
+              value={exportFormat}
+              onChange={(e) => setExportFormat(e.target.value as 'pdf' | 'csv')}
+              size="small"
+              sx={{ minWidth: 140 }}
+            >
+              <MenuItem value="pdf">PDF</MenuItem>
+              <MenuItem value="csv">CSV</MenuItem>
+            </TextField>
+            <Button variant="contained" size="small" onClick={() => void downloadStageReport()} disabled={exportLoading}>
+              {exportLoading ? 'Bezig...' : 'Exporteren'}
+            </Button>
+          </Stack>
+          {exportError && (
+            <Alert severity="error" sx={{ mt: 1 }}>
+              {exportError}
+            </Alert>
+          )}
         </Stack>
       </Paper>
 

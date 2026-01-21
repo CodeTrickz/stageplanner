@@ -12,6 +12,7 @@
 - Server-side cache with ETag/If-None-Match for planning, notes, and files
 - Cache smoke test script (`testscripts/cache-smoke.sh`)
 - Bulk actions for planning items (multi-select + status/priority/tags update)
+- Stage report export (PDF/CSV) from the dashboard
 
 ### Changed
 - Files are stored server-side (SQLite BLOBs)

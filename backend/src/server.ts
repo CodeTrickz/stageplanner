@@ -14,11 +14,15 @@ import { sendMail } from './mail'
 import fs from 'node:fs'
 import { Registry, Counter, Histogram, collectDefaultMetrics } from 'prom-client'
 import { FORMAT_HTTP_HEADERS, Span, SpanContext } from 'opentracing'
+import { stringify } from 'csv-stringify'
+import { buildStageReportData } from './stage-report'
 
 // jaeger-client is a CommonJS module that exports an object with initTracer
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const jaegerClient = require('jaeger-client')
 const initTracer = jaegerClient.initTracer as (config: any, options?: any) => any
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const PDFDocument = require('pdfkit')
 
 class ApiError extends Error {
   status: number
@@ -367,6 +371,20 @@ function normalizeTagsJson(input: unknown, fallback: string): string {
     return JSON.stringify(parts)
   }
   return fallback
+}
+
+function parseYmdToUtcDate(value: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null
+  const date = new Date(`${value}T00:00:00.000Z`)
+  if (Number.isNaN(date.getTime())) return null
+  return date
+}
+
+function addMonths(date: Date, months: number): Date {
+  const year = date.getUTCFullYear()
+  const month = date.getUTCMonth()
+  const day = date.getUTCDate()
+  return new Date(Date.UTC(year, month + months, day))
 }
 
 function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
@@ -1577,6 +1595,101 @@ app.delete('/planning/:id', requireAuth, asyncHandler(async (req, res) => {
   if (p.groupId) invalidateWorkspaceCache(p.groupId)
   if (p.groupId) broadcastWorkspace(p.groupId, 'planning')
   return res.json({ ok: true })
+}))
+
+const stageReportQuerySchema = z.object({
+  workspaceId: z.string().min(1),
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  format: z.enum(['pdf', 'csv']),
+})
+
+app.get('/reports/stage', requireAuth, asyncHandler(async (req, res) => {
+  const u = getDbUserOr401(req, res)
+  if (!u) return
+  const { workspaceId, from, to, format } = parseQuery(req, stageReportQuerySchema)
+
+  const fromDate = parseYmdToUtcDate(from)
+  const toDate = parseYmdToUtcDate(to)
+  if (!fromDate || !toDate) return res.status(400).json({ error: 'invalid_date' })
+  if (toDate < fromDate) return res.status(400).json({ error: 'invalid_range' })
+  const maxTo = addMonths(fromDate, 6)
+  if (toDate > maxTo) return res.status(400).json({ error: 'range_too_large' })
+
+  if (!u.isAdmin) {
+    const role = db.getMembershipRole(u.id, workspaceId)
+    if (!role) return res.status(403).json({ error: 'not_member' })
+  }
+
+  res.setTimeout(60000)
+  const report = buildStageReportData({ workspaceId, from, to, actorUserId: u.id })
+  const filename = `stage-rapport-${from}-${to}.${format}`
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+
+  if (format === 'csv') {
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+    const stringifier = stringify({
+      header: true,
+      columns: ['date', 'title', 'status', 'hours', 'tags'],
+    })
+    stringifier.pipe(res)
+    for (const day of report.days) {
+      for (const item of day.items) {
+        stringifier.write({
+          date: day.date,
+          title: item.title,
+          status: item.status,
+          hours: item.hours.toFixed(2),
+          tags: item.tags.join(', '),
+        })
+      }
+    }
+    stringifier.write({
+      date: 'Summary',
+      title: `Total days: ${report.summary.totalDays}`,
+      status: '',
+      hours: report.summary.totalHours.toFixed(2),
+      tags: '',
+    })
+    stringifier.write({
+      date: 'Summary',
+      title: `Average hours/day: ${report.summary.averageHoursPerDay.toFixed(2)}`,
+      status: '',
+      hours: '',
+      tags: '',
+    })
+    stringifier.end()
+    return
+  }
+
+  res.setHeader('Content-Type', 'application/pdf')
+  const doc = new PDFDocument({ size: 'A4', margin: 50 })
+  doc.pipe(res)
+  doc.fontSize(18).text('Stage rapport', { underline: true })
+  doc.moveDown(0.5)
+  doc.fontSize(11)
+  doc.text(`Workspace: ${report.workspaceName}`)
+  if (report.studentName?.trim()) doc.text(`Student: ${report.studentName}`)
+  doc.text(`Periode: ${report.periodFrom} – ${report.periodTo}`)
+  doc.text(`Exportdatum: ${report.exportDate}`)
+  doc.moveDown()
+
+  for (const day of report.days) {
+    doc.fontSize(12).text(`${day.date} • ${day.totalHours.toFixed(2)} uur`)
+    doc.fontSize(10)
+    for (const item of day.items) {
+      const tags = item.tags.length ? ` [${item.tags.join(', ')}]` : ''
+      doc.text(`- ${item.title} (${item.status}, ${item.hours.toFixed(2)} uur)${tags}`, { indent: 12 })
+    }
+    doc.moveDown(0.5)
+  }
+
+  doc.moveDown()
+  doc.fontSize(12).text('Samenvatting', { underline: true })
+  doc.fontSize(10).text(`Totaal dagen: ${report.summary.totalDays}`)
+  doc.text(`Totaal uren: ${report.summary.totalHours.toFixed(2)}`)
+  doc.text(`Gemiddelde uren per dag: ${report.summary.averageHoursPerDay.toFixed(2)}`)
+  doc.end()
 }))
 
 // (group planner removed)

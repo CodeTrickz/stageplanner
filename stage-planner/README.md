@@ -10,6 +10,7 @@ Frontend for Stage Planner with workspace‑scoped data and realtime updates, wi
 - **Notes / mail**: text + attachments (pick from Files), save, export as **.txt** or **.zip**.
 - **Team**: workspaces and member management.
 - **Settings**: user settings (planning, internship period, holidays, theme).
+- **Stage report**: export internship progress to PDF/CSV.
 - **Admin**: management and logs (admin only).
 
 ## Start (Windows)

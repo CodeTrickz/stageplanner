@@ -954,8 +954,16 @@ export const db = {
 
   countGroupAdmins: (groupId: string): number => {
     if (sqliteDb) {
+      const membershipCols = sqliteDb
+        .prepare(`PRAGMA table_info(group_memberships)`)
+        .all()
+        .map((r: any) => String(r.name))
+      const hasStatus = membershipCols.includes('status')
+      const whereStatus = hasStatus ? `AND (status = 'active' OR status IS NULL)` : ''
       const row = sqliteDb
-        .prepare(`SELECT COUNT(1) as c FROM group_memberships WHERE group_id=? AND role='OWNER'`)
+        .prepare(
+          `SELECT COUNT(1) as c FROM group_memberships WHERE group_id=? AND role IN ('OWNER','STUDENT','admin') ${whereStatus}`,
+        )
         .get(groupId) as { c: number } | undefined
       return Number(row?.c ?? 0)
     }

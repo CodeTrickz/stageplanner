@@ -1630,34 +1630,60 @@ app.get('/reports/stage', requireAuth, asyncHandler(async (req, res) => {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8')
     const stringifier = stringify({
       header: true,
-      columns: ['date', 'title', 'status', 'hours', 'tags'],
+      columns: ['date', 'week', 'title', 'status', 'hours', 'tags', 'stage'],
     })
     stringifier.pipe(res)
     for (const day of report.days) {
       for (const item of day.items) {
         stringifier.write({
           date: day.date,
+          week: item.week,
           title: item.title,
           status: item.status,
           hours: item.hours.toFixed(2),
           tags: item.tags.join(', '),
+          stage: item.isStageWork ? 'stage-work' : '',
         })
       }
     }
     stringifier.write({
       date: 'Summary',
+      week: '',
       title: `Total days: ${report.summary.totalDays}`,
       status: '',
       hours: report.summary.totalHours.toFixed(2),
       tags: '',
+      stage: '',
     })
     stringifier.write({
       date: 'Summary',
-      title: `Average hours/day: ${report.summary.averageHoursPerDay.toFixed(2)}`,
+      week: '',
+      title: `Total items: ${report.summary.totalItems} • Completed: ${report.summary.completedItems}`,
+      status: '',
+      hours: report.summary.completedHours.toFixed(2),
+      tags: '',
+      stage: '',
+    })
+    stringifier.write({
+      date: 'Summary',
+      week: '',
+      title: `Stage work hours: ${report.summary.stageWorkHours.toFixed(2)}`,
       status: '',
       hours: '',
       tags: '',
+      stage: '',
     })
+    for (const week of report.weeks) {
+      stringifier.write({
+        date: 'Week',
+        week: week.week,
+        title: `Items: ${week.totalItems}`,
+        status: `todo:${week.statusCounts.todo} in_progress:${week.statusCounts.in_progress} done:${week.statusCounts.done}`,
+        hours: week.totalHours.toFixed(2),
+        tags: '',
+        stage: '',
+      })
+    }
     stringifier.end()
     return
   }
@@ -1679,7 +1705,8 @@ app.get('/reports/stage', requireAuth, asyncHandler(async (req, res) => {
     doc.fontSize(10)
     for (const item of day.items) {
       const tags = item.tags.length ? ` [${item.tags.join(', ')}]` : ''
-      doc.text(`- ${item.title} (${item.status}, ${item.hours.toFixed(2)} uur)${tags}`, { indent: 12 })
+      const stageLabel = item.isStageWork ? ' • stage' : ''
+      doc.text(`- ${item.title} (${item.status}, ${item.hours.toFixed(2)} uur${stageLabel})${tags}`, { indent: 12 })
     }
     doc.moveDown(0.5)
   }
@@ -1687,8 +1714,21 @@ app.get('/reports/stage', requireAuth, asyncHandler(async (req, res) => {
   doc.moveDown()
   doc.fontSize(12).text('Samenvatting', { underline: true })
   doc.fontSize(10).text(`Totaal dagen: ${report.summary.totalDays}`)
+  doc.text(`Totaal items: ${report.summary.totalItems}`)
   doc.text(`Totaal uren: ${report.summary.totalHours.toFixed(2)}`)
+  doc.text(`Gewerkte uren (done): ${report.summary.completedHours.toFixed(2)}`)
+  doc.text(`Stage-werk uren: ${report.summary.stageWorkHours.toFixed(2)}`)
   doc.text(`Gemiddelde uren per dag: ${report.summary.averageHoursPerDay.toFixed(2)}`)
+  if (report.weeks.length) {
+    doc.moveDown()
+    doc.fontSize(12).text('Weekoverzicht', { underline: true })
+    doc.fontSize(10)
+    for (const week of report.weeks) {
+      doc.text(
+        `${week.week} • ${week.totalHours.toFixed(2)} uur • items ${week.totalItems} • status: todo ${week.statusCounts.todo}, in_progress ${week.statusCounts.in_progress}, done ${week.statusCounts.done}`,
+      )
+    }
+  }
   doc.end()
 }))
 

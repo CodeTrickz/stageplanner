@@ -20,6 +20,7 @@
 - Week planning cards made more readable
 - Stage workday progress counts only after the time slot has passed
 - Cache TTL configurable via `CACHE_TTL_SECONDS` (default 30s)
+- Stage report export includes hours, completed totals, and weekly status breakdown
 
 ### Fixed
 - Internship progress on dashboard works even with mixed tag formats

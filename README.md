@@ -129,7 +129,7 @@ Important:
 - ✅ File management (upload/download via backend, stored in SQLite)
 - ✅ Notes with attachments
 - ✅ Export (.txt, .zip)
-- ✅ Stage report export (PDF/CSV)
+- ✅ Stage report export (PDF/CSV) with totals and weekly breakdown
 - ✅ User authentication and verification
 - ✅ Responsive design (mobile-first)
 - ✅ Admin functionality

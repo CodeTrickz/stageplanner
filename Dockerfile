@@ -23,7 +23,7 @@ COPY stage-planner/public ./public
 COPY stage-planner/src ./src
 RUN npm run build
 
-FROM alpine:3.20
+FROM alpine:3.23
 WORKDIR /opt/stageplanner
 
 COPY --from=backend-build /app/backend/dist ./backend/dist

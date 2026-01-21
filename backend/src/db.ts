@@ -75,6 +75,17 @@ export type DbFeedback = {
   updatedAt: number
 }
 
+export type DbTaskTemplate = {
+  id: string
+  groupId: string
+  title: string
+  description: string | null
+  durationMinutes: number
+  tagsJson: string
+  createdAt: number
+  updatedAt: number
+}
+
 export type DbNote = {
   id: string
   userId: string
@@ -303,6 +314,19 @@ function openSqlite() {
       FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_notes_user ON notes(user_id, updated_at);
+
+    CREATE TABLE IF NOT EXISTS task_templates (
+      id TEXT PRIMARY KEY,
+      group_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      duration_minutes INTEGER NOT NULL,
+      tags_json TEXT NOT NULL DEFAULT '[]',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY(group_id) REFERENCES groups(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_task_templates_group ON task_templates(group_id, created_at);
 
     CREATE TABLE IF NOT EXISTS shares (
       id TEXT PRIMARY KEY,
@@ -1522,6 +1546,106 @@ export const db = {
     return s.planning
       .filter((p) => p.userId === userId && (!date || p.date === date))
       .sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start))
+  },
+
+  // Task templates
+  listTaskTemplates: (groupId: string): DbTaskTemplate[] => {
+    if (sqliteDb) {
+      return sqliteDb
+        .prepare(
+          `SELECT id, group_id as groupId, title, description, duration_minutes as durationMinutes, tags_json as tagsJson, created_at as createdAt, updated_at as updatedAt
+           FROM task_templates WHERE group_id=? ORDER BY created_at DESC`,
+        )
+        .all(groupId) as DbTaskTemplate[]
+    }
+    return []
+  },
+
+  getTaskTemplateById: (id: string): DbTaskTemplate | null => {
+    if (sqliteDb) {
+      const row = sqliteDb
+        .prepare(
+          `SELECT id, group_id as groupId, title, description, duration_minutes as durationMinutes, tags_json as tagsJson, created_at as createdAt, updated_at as updatedAt
+           FROM task_templates WHERE id=?`,
+        )
+        .get(id) as DbTaskTemplate | undefined
+      return row ?? null
+    }
+    return null
+  },
+
+  createTaskTemplate: (input: {
+    groupId: string
+    title: string
+    description?: string | null
+    durationMinutes: number
+    tagsJson?: string
+  }): DbTaskTemplate => {
+    const t = now()
+    const template: DbTaskTemplate = {
+      id: uuid(),
+      groupId: input.groupId,
+      title: input.title,
+      description: input.description ?? null,
+      durationMinutes: input.durationMinutes,
+      tagsJson: input.tagsJson ?? '[]',
+      createdAt: t,
+      updatedAt: t,
+    }
+    if (sqliteDb) {
+      sqliteDb
+        .prepare(
+          `INSERT INTO task_templates (id, group_id, title, description, duration_minutes, tags_json, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          template.id,
+          template.groupId,
+          template.title,
+          template.description,
+          template.durationMinutes,
+          template.tagsJson,
+          template.createdAt,
+          template.updatedAt,
+        )
+    }
+    return template
+  },
+
+  updateTaskTemplate: (
+    id: string,
+    updates: Partial<{
+      title: string
+      description: string | null
+      durationMinutes: number
+      tagsJson: string
+    }>,
+  ): DbTaskTemplate | null => {
+    if (!sqliteDb) return null
+    const current = db.getTaskTemplateById(id)
+    if (!current) return null
+    const next: DbTaskTemplate = {
+      ...current,
+      title: updates.title ?? current.title,
+      description: updates.description !== undefined ? updates.description : current.description,
+      durationMinutes: updates.durationMinutes ?? current.durationMinutes,
+      tagsJson: updates.tagsJson ?? current.tagsJson,
+      updatedAt: now(),
+    }
+    sqliteDb
+      .prepare(
+        `UPDATE task_templates SET title=?, description=?, duration_minutes=?, tags_json=?, updated_at=? WHERE id=?`,
+      )
+      .run(next.title, next.description, next.durationMinutes, next.tagsJson, next.updatedAt, id)
+    return next
+  },
+
+  deleteTaskTemplate: (id: string): boolean => {
+    if (sqliteDb) {
+      const info = sqliteDb.prepare(`DELETE FROM task_templates WHERE id=?`).run(id)
+      return info.changes > 0
+    }
+    return false
   },
 
   listPlanningForGroup: (groupId: string, date?: string): DbPlanningItem[] => {

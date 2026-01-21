@@ -30,7 +30,7 @@ import { DayTimeline } from '../components/DayTimeline'
 import { MonthCalendar } from '../components/MonthCalendar'
 import { useSettings } from '../app/settings'
 import { useWorkspace } from '../hooks/useWorkspace'
-import { yyyyMmDdLocal } from '../utils/date'
+import { dateFromYmdLocal, startOfWeekMonday, yyyyMmDdLocal } from '../utils/date'
 import { apiFetch, useApiToken } from '../api/client'
 import { useWorkspaceEvents } from '../hooks/useWorkspaceEvents'
 import { getWorkspacePermissions } from '../utils/permissions'
@@ -77,6 +77,14 @@ type ServerFileMeta = {
   labelsJson: string
   createdAt: number
   updatedAt: number
+}
+
+type TaskTemplate = {
+  id: string
+  title: string
+  description?: string | null
+  durationMinutes: number
+  tags: string[]
 }
 
 type Draft = {
@@ -161,6 +169,10 @@ export function PlanningPage() {
   const [metas, setMetas] = useState<ServerFileMeta[]>([])
   const [draftLinks, setDraftLinks] = useState<{ noteId: string; fileKeys: string[] }>({ noteId: '', fileKeys: [] })
   const [refreshTick, setRefreshTick] = useState(0)
+  const [templates, setTemplates] = useState<TaskTemplate[]>([])
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('')
+  const [templatesLoading, setTemplatesLoading] = useState(false)
+  const [templatesError, setTemplatesError] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [lastSelectedId, setLastSelectedId] = useState<string | null>(null)
   const [bulkStatus, setBulkStatus] = useState<ServerPlanningItem['status'] | ''>('')
@@ -175,6 +187,38 @@ export function PlanningPage() {
       setRefreshTick((v) => v + 1)
     }
   })
+
+  useEffect(() => {
+    if (!token || !currentWorkspace?.id) {
+      setTemplates([])
+      setSelectedTemplateId('')
+      return
+    }
+    let cancelled = false
+    setTemplatesLoading(true)
+    setTemplatesError(null)
+    apiFetch(`/task-templates?workspaceId=${encodeURIComponent(currentWorkspace.id)}`, {
+      token: token || undefined,
+    })
+      .then((result) => {
+        if (cancelled) return
+        const list = (result.templates || []) as TaskTemplate[]
+        setTemplates(list)
+        if (selectedTemplateId && !list.find((t) => t.id === selectedTemplateId)) {
+          setSelectedTemplateId('')
+        }
+      })
+      .catch((e) => {
+        if (cancelled) return
+        setTemplatesError(e instanceof Error ? e.message : 'failed_to_load_templates')
+      })
+      .finally(() => {
+        if (!cancelled) setTemplatesLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [token, currentWorkspace?.id])
 
   // Load planning items for current workspace
   useEffect(() => {
@@ -583,6 +627,33 @@ export function PlanningPage() {
     }
   }
 
+  async function applyTemplateToWeek() {
+    if (!canEdit) return
+    if (!token || !currentWorkspace?.id || !selectedTemplateId) return
+    const weekStart = yyyyMmDdLocal(startOfWeekMonday(dateFromYmdLocal(date)))
+    try {
+      const result = await apiFetch(`/task-templates/${selectedTemplateId}/apply`, {
+        method: 'POST',
+        token: token || undefined,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          workspaceId: currentWorkspace.id,
+          weekStart,
+        }),
+      })
+      setBulkToast({
+        message: `Template toegepast (${result.createdCount ?? 0} items).`,
+        severity: 'success',
+      })
+      setRefreshTick((v) => v + 1)
+    } catch (e) {
+      setBulkToast({
+        message: e instanceof Error ? e.message : 'Template toepassen mislukt.',
+        severity: 'error',
+      })
+    }
+  }
+
   return (
     <Box sx={{ display: 'grid', gap: { xs: 1.5, sm: 2 } }}>
       <Typography variant="h5" sx={{ fontWeight: 800, fontSize: { xs: '1.125rem', sm: '1.25rem' } }}>
@@ -611,6 +682,43 @@ export function PlanningPage() {
                 sx={{ alignSelf: { xs: 'stretch', sm: 'auto' } }}
               >
                 Nieuw item
+              </Button>
+            </Stack>
+          </Paper>
+          <Paper variant="outlined" sx={{ p: { xs: 1, sm: 1.5 } }}>
+            <Stack direction="column" spacing={1}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                Templates
+              </Typography>
+              <TextField
+                select
+                label="Template"
+                size="small"
+                value={selectedTemplateId}
+                onChange={(e) => setSelectedTemplateId(e.target.value)}
+                disabled={templatesLoading || templates.length === 0}
+              >
+                <MenuItem value="">(selecteer)</MenuItem>
+                {templates.map((t) => (
+                  <MenuItem key={t.id} value={t.id}>
+                    {t.title}
+                  </MenuItem>
+                ))}
+              </TextField>
+              {templatesError && <Alert severity="error">{templatesError}</Alert>}
+              {selectedTemplateId && (
+                <Typography variant="caption" color="text.secondary">
+                  {templates.find((t) => t.id === selectedTemplateId)?.durationMinutes ?? 0} min • week van{' '}
+                  {yyyyMmDdLocal(startOfWeekMonday(dateFromYmdLocal(date)))}
+                </Typography>
+              )}
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={applyTemplateToWeek}
+                disabled={!canEdit || !selectedTemplateId}
+              >
+                Toepassen op week
               </Button>
             </Stack>
           </Paper>

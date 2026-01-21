@@ -387,6 +387,29 @@ function addMonths(date: Date, months: number): Date {
   return new Date(Date.UTC(year, month + months, day))
 }
 
+function addDaysUtc(date: Date, days: number): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + days))
+}
+
+function startOfWeekMondayUtc(date: Date): Date {
+  const day = date.getUTCDay() || 7 // 1..7 (Mon..Sun)
+  return addDaysUtc(date, -(day - 1))
+}
+
+function formatYmdUtc(date: Date): string {
+  return date.toISOString().slice(0, 10)
+}
+
+function addMinutesToTime(start: string, minutes: number): string {
+  const [hh, mm] = start.split(':').map((v) => Number(v))
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return start
+  const total = hh * 60 + mm + minutes
+  const clamped = Math.min(total, 23 * 60 + 59)
+  const outH = String(Math.floor(clamped / 60)).padStart(2, '0')
+  const outM = String(clamped % 60).padStart(2, '0')
+  return `${outH}:${outM}`
+}
+
 function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
   const u = getUser(req)
   if (!u || !u.isAdmin) return res.status(403).json({ error: 'forbidden' })
@@ -1417,6 +1440,186 @@ app.post('/shares', requireAuth, asyncHandler(async (req, res) => {
   })
   audit(req, 'share.create', d.resourceType, d.resourceId, { to: grantee.email, permission: d.permission })
   return res.json({ share })
+}))
+
+// Task templates (workspace-scoped)
+const taskTemplateListQuerySchema = z.object({
+  workspaceId: z.string().min(1),
+})
+
+const taskTemplateCreateSchema = z.object({
+  workspaceId: z.string().min(1),
+  title: z.string().min(1).max(200),
+  description: z.string().max(5000).optional().nullable(),
+  durationMinutes: z.number().int().min(5).max(600),
+  tags: z.array(z.string().max(64)).max(50).optional(),
+  tagsJson: z.string().max(2000).optional(),
+})
+
+const taskTemplateUpdateSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  description: z.string().max(5000).optional().nullable(),
+  durationMinutes: z.number().int().min(5).max(600).optional(),
+  tags: z.array(z.string().max(64)).max(50).optional(),
+  tagsJson: z.string().max(2000).optional(),
+})
+
+const taskTemplateApplySchema = z.object({
+  workspaceId: z.string().min(1),
+  weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+})
+
+function parseTagsJson(tagsJson: string | null | undefined): string[] {
+  if (!tagsJson) return []
+  try {
+    const parsed = JSON.parse(tagsJson)
+    return Array.isArray(parsed) ? parsed.filter((t) => typeof t === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+app.get('/task-templates', requireAuth, asyncHandler(async (req, res) => {
+  const u = getDbUserOr401(req, res)
+  if (!u) return
+  const { workspaceId } = parseQuery(req, taskTemplateListQuerySchema)
+  if (!canViewInWorkspace(u.id, workspaceId)) {
+    return res.status(403).json({ error: 'insufficient_permissions' })
+  }
+  const templates = db.listTaskTemplates(workspaceId).map((t) => ({
+    id: t.id,
+    title: t.title,
+    description: t.description,
+    durationMinutes: t.durationMinutes,
+    tags: parseTagsJson(t.tagsJson),
+    workspaceId: t.groupId,
+    createdAt: t.createdAt,
+    updatedAt: t.updatedAt,
+  }))
+  return res.json({ templates })
+}))
+
+app.post('/task-templates', requireAuth, asyncHandler(async (req, res) => {
+  const u = getDbUserOr401(req, res)
+  if (!u) return
+  const d = parseBody(req, taskTemplateCreateSchema)
+  if (!canEditInWorkspace(u.id, d.workspaceId, u.id)) {
+    return res.status(403).json({ error: 'insufficient_permissions' })
+  }
+  const tagsJson = normalizeTagsJson(d.tagsJson ?? d.tags, '[]')
+  const template = db.createTaskTemplate({
+    groupId: d.workspaceId,
+    title: d.title,
+    description: d.description ?? null,
+    durationMinutes: d.durationMinutes,
+    tagsJson,
+  })
+  audit(req, 'task_template.create', 'task_template', template.id, { workspaceId: d.workspaceId })
+  return res.json({
+    template: {
+      id: template.id,
+      title: template.title,
+      description: template.description,
+      durationMinutes: template.durationMinutes,
+      tags: parseTagsJson(template.tagsJson),
+      workspaceId: template.groupId,
+      createdAt: template.createdAt,
+      updatedAt: template.updatedAt,
+    },
+  })
+}))
+
+app.patch('/task-templates/:id', requireAuth, asyncHandler(async (req, res) => {
+  const u = getDbUserOr401(req, res)
+  if (!u) return
+  const templateId = req.params.id
+  const d = parseBody(req, taskTemplateUpdateSchema)
+  const existing = db.getTaskTemplateById(templateId)
+  if (!existing) return res.status(404).json({ error: 'not_found' })
+  if (!canEditInWorkspace(u.id, existing.groupId, u.id)) {
+    return res.status(403).json({ error: 'insufficient_permissions' })
+  }
+  const tagsJson = d.tagsJson ?? (d.tags ? normalizeTagsJson(d.tags, existing.tagsJson) : undefined)
+  const updated = db.updateTaskTemplate(templateId, {
+    title: d.title,
+    description: d.description,
+    durationMinutes: d.durationMinutes,
+    tagsJson,
+  })
+  if (!updated) return res.status(404).json({ error: 'not_found' })
+  audit(req, 'task_template.update', 'task_template', templateId, { workspaceId: existing.groupId })
+  return res.json({
+    template: {
+      id: updated.id,
+      title: updated.title,
+      description: updated.description,
+      durationMinutes: updated.durationMinutes,
+      tags: parseTagsJson(updated.tagsJson),
+      workspaceId: updated.groupId,
+      createdAt: updated.createdAt,
+      updatedAt: updated.updatedAt,
+    },
+  })
+}))
+
+app.delete('/task-templates/:id', requireAuth, asyncHandler(async (req, res) => {
+  const u = getDbUserOr401(req, res)
+  if (!u) return
+  const templateId = req.params.id
+  const existing = db.getTaskTemplateById(templateId)
+  if (!existing) return res.status(404).json({ error: 'not_found' })
+  if (!canEditInWorkspace(u.id, existing.groupId, u.id)) {
+    return res.status(403).json({ error: 'insufficient_permissions' })
+  }
+  const deleted = db.deleteTaskTemplate(templateId)
+  if (!deleted) return res.status(404).json({ error: 'not_found' })
+  audit(req, 'task_template.delete', 'task_template', templateId, { workspaceId: existing.groupId })
+  return res.json({ ok: true })
+}))
+
+app.post('/task-templates/:id/apply', requireAuth, asyncHandler(async (req, res) => {
+  const u = getDbUserOr401(req, res)
+  if (!u) return
+  const templateId = req.params.id
+  const { workspaceId, weekStart } = parseBody(req, taskTemplateApplySchema)
+  const template = db.getTaskTemplateById(templateId)
+  if (!template) return res.status(404).json({ error: 'not_found' })
+  if (template.groupId !== workspaceId) return res.status(403).json({ error: 'wrong_workspace' })
+  if (!canEditInWorkspace(u.id, workspaceId, u.id)) {
+    return res.status(403).json({ error: 'insufficient_permissions' })
+  }
+
+  const start = parseYmdToUtcDate(weekStart)
+  if (!start) return res.status(400).json({ error: 'invalid_week_start' })
+  const monday = startOfWeekMondayUtc(start)
+  const created: DbPlanningItem[] = []
+  const startTime = '09:00'
+  const endTime = addMinutesToTime(startTime, template.durationMinutes)
+
+  for (let i = 0; i < 7; i += 1) {
+    const day = addDaysUtc(monday, i)
+    const item = db.upsertPlanning(u.id, {
+      groupId: workspaceId,
+      date: formatYmdUtc(day),
+      start: startTime,
+      end: endTime,
+      title: template.title,
+      notes: template.description ?? null,
+      tagsJson: template.tagsJson ?? '[]',
+      priority: 'medium',
+      status: 'todo',
+    })
+    created.push(item)
+  }
+
+  audit(req, 'task_template.apply', 'task_template', templateId, {
+    workspaceId,
+    count: created.length,
+    weekStart: formatYmdUtc(monday),
+  })
+  invalidateWorkspaceCache(workspaceId)
+  broadcastWorkspace(workspaceId, 'planning')
+  return res.json({ createdCount: created.length, items: created })
 }))
 
 // Planning: filter by workspace

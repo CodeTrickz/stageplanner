@@ -1,0 +1,55 @@
+name: Feature Request
+description: Propose an idea to improve the application
+title: "[FEATURE] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the requested feature.
+      placeholder: What would you like to add or improve?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Use case / steps
+      description: Describe the use case or steps this feature supports.
+      placeholder: |
+        1. User opens ...
+        2. User clicks ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected outcome
+      description: What should this feature deliver for the user?
+      placeholder: Expected result...
+    validations:
+      required: true
+  - type: textarea
+    id: proposed_solution
+    attributes:
+      label: Proposed solution
+      description: How would you approach this?
+      placeholder: Optional
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Have you considered any alternatives?
+      placeholder: Optional
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Extra info, links, or examples.
+      placeholder: Optional
+    validations:
+      required: false

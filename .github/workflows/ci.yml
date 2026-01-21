@@ -1,4 +1,4 @@
-name: Backend & Frontend CI
+name: CI
 
 on:
   push:
@@ -7,35 +7,26 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-
-      - name: Cache backend dependencies
-        uses: actions/cache@v4
-        with:
-          path: backend/node_modules
-          key: ${{ runner.os }}-backend-${{ hashFiles('backend/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-backend-
-
-      - name: Cache frontend dependencies
-        uses: actions/cache@v4
-        with:
-          path: stage-planner/node_modules
-          key: ${{ runner.os }}-frontend-${{ hashFiles('stage-planner/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-frontend-
+          node-version: ${{ matrix.node-version }}
 
       - name: Backend - install
         working-directory: backend
         run: npm ci
+
+      - name: Backend - test
+        working-directory: backend
+        run: npm run test --if-present
 
       - name: Backend - build
         working-directory: backend
@@ -45,10 +36,17 @@ jobs:
         working-directory: stage-planner
         run: npm ci
 
-      - name: Frontend - lint (warnings allowed)
+      - name: Frontend - lint
         working-directory: stage-planner
-        run: npm run lint -- --max-warnings 9999
+        run: npm run lint
+
+      - name: Frontend - test
+        working-directory: stage-planner
+        run: npm run test --if-present
 
       - name: Frontend - build
         working-directory: stage-planner
         run: npm run build
+
+      - name: Docker build check
+        run: docker build .

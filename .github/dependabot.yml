@@ -15,6 +15,10 @@ updates:
     commit-message:
       prefix: "chore(backend)"
       include: "scope"
+    groups:
+      backend:
+        patterns:
+          - "*"
 
   # Frontend dependencies
   - package-ecosystem: "npm"
@@ -31,6 +35,30 @@ updates:
     commit-message:
       prefix: "chore(frontend)"
       include: "scope"
+    groups:
+      frontend:
+        patterns:
+          - "*"
+
+  # Dev tooling (repo root)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "CodeTrickz"
+    labels:
+      - "dependencies"
+      - "dev-tooling"
+    commit-message:
+      prefix: "chore(tooling)"
+      include: "scope"
+    groups:
+      dev-tooling:
+        patterns:
+          - "*"
 
   # Docker dependencies
   - package-ecosystem: "docker"
@@ -49,11 +77,15 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "monthly"
+      interval: "weekly"
     open-pull-requests-limit: 3
     reviewers:
       - "CodeTrickz"
     labels:
       - "dependencies"
       - "github-actions"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
 

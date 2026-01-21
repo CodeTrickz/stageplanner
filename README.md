@@ -140,6 +140,52 @@ Important:
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 
+### CI Pipeline
+
+Pull requests run the CI workflow on Node.js 18 and 20. It installs dependencies, runs lint/tests, builds both apps, and checks the Docker build.
+CI must pass before merging.
+
+### Conventional Commits
+
+This repository enforces Conventional Commits via commitlint and a Husky `commit-msg` hook.
+
+Allowed types:
+`feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `ci`
+
+Examples:
+
+- `feat: add weekly summary export`
+- `fix: handle empty workspace list`
+
+Setup (once per clone):
+
+```bash
+npm install
+```
+
+### Releases (SemVer)
+
+Releases are automated with `semantic-release`, which generates `CHANGELOG.md`, creates a `vX.Y.Z` tag, and publishes a GitHub Release.
+
+To cut a release:
+
+```bash
+npm run release
+```
+
+Requirements:
+
+- The release runner must have `GH_TOKEN` with repo scope.
+- Commits must follow the Conventional Commits format to drive version bumps.
+
+### Issue Templates
+
+New issues use required templates for bugs and feature requests to ensure reports include description, steps, and expected behavior.
+
+### Dependency Updates
+
+Dependabot runs weekly and groups updates by scope (frontend, backend, dev tooling, and GitHub Actions) to keep PRs manageable.
+
 ## License
 
 See [LICENSE](./LICENSE) for license information.

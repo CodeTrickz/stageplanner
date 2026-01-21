@@ -14,7 +14,7 @@
 - Bulk actions for planning items (multi-select + status/priority/tags update)
 - Stage report export (PDF/CSV) from the dashboard
 - Workspace roles (owner/editor/commenter/viewer) with permission checks
-- Workspace task templates (apply to a week)
+- Workspace task templates (apply to a week + manage in planning)
 
 ### Changed
 - Files are stored server-side (SQLite BLOBs)

@@ -87,6 +87,14 @@ type TaskTemplate = {
   tags: string[]
 }
 
+type TaskTemplateDraft = {
+  id?: string
+  title: string
+  description: string
+  durationMinutes: number
+  tags: string
+}
+
 type Draft = {
   id?: string
   date: string
@@ -173,6 +181,13 @@ export function PlanningPage() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('')
   const [templatesLoading, setTemplatesLoading] = useState(false)
   const [templatesError, setTemplatesError] = useState<string | null>(null)
+  const [templateDraft, setTemplateDraft] = useState<TaskTemplateDraft>({
+    title: '',
+    description: '',
+    durationMinutes: 60,
+    tags: '',
+  })
+  const [templateSaving, setTemplateSaving] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [lastSelectedId, setLastSelectedId] = useState<string | null>(null)
   const [bulkStatus, setBulkStatus] = useState<ServerPlanningItem['status'] | ''>('')
@@ -188,36 +203,32 @@ export function PlanningPage() {
     }
   })
 
-  useEffect(() => {
+  async function fetchTemplates() {
     if (!token || !currentWorkspace?.id) {
       setTemplates([])
       setSelectedTemplateId('')
       return
     }
-    let cancelled = false
     setTemplatesLoading(true)
     setTemplatesError(null)
-    apiFetch(`/task-templates?workspaceId=${encodeURIComponent(currentWorkspace.id)}`, {
-      token: token || undefined,
-    })
-      .then((result) => {
-        if (cancelled) return
-        const list = (result.templates || []) as TaskTemplate[]
-        setTemplates(list)
-        if (selectedTemplateId && !list.find((t) => t.id === selectedTemplateId)) {
-          setSelectedTemplateId('')
-        }
+    try {
+      const result = await apiFetch(`/task-templates?workspaceId=${encodeURIComponent(currentWorkspace.id)}`, {
+        token: token || undefined,
       })
-      .catch((e) => {
-        if (cancelled) return
-        setTemplatesError(e instanceof Error ? e.message : 'failed_to_load_templates')
-      })
-      .finally(() => {
-        if (!cancelled) setTemplatesLoading(false)
-      })
-    return () => {
-      cancelled = true
+      const list = (result.templates || []) as TaskTemplate[]
+      setTemplates(list)
+      if (selectedTemplateId && !list.find((t) => t.id === selectedTemplateId)) {
+        setSelectedTemplateId('')
+      }
+    } catch (e) {
+      setTemplatesError(e instanceof Error ? e.message : 'failed_to_load_templates')
+    } finally {
+      setTemplatesLoading(false)
     }
+  }
+
+  useEffect(() => {
+    void fetchTemplates()
   }, [token, currentWorkspace?.id])
 
   // Load planning items for current workspace
@@ -654,6 +665,95 @@ export function PlanningPage() {
     }
   }
 
+  function resetTemplateDraft() {
+    setTemplateDraft({ title: '', description: '', durationMinutes: 60, tags: '' })
+  }
+
+  function startEditTemplate(template: TaskTemplate) {
+    setTemplateDraft({
+      id: template.id,
+      title: template.title,
+      description: template.description ?? '',
+      durationMinutes: template.durationMinutes,
+      tags: template.tags.join(', '),
+    })
+  }
+
+  async function saveTemplate() {
+    if (!canEdit) return
+    if (!token || !currentWorkspace?.id) return
+    if (!templateDraft.title.trim()) {
+      setBulkToast({ message: 'Template titel is verplicht.', severity: 'error' })
+      return
+    }
+    setTemplateSaving(true)
+    try {
+      const payload = {
+        workspaceId: currentWorkspace.id,
+        title: templateDraft.title.trim(),
+        description: templateDraft.description.trim() || null,
+        durationMinutes: Math.max(5, Math.min(600, Math.round(templateDraft.durationMinutes))),
+        tags: templateDraft.tags
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean)
+          .slice(0, 50),
+      }
+      if (templateDraft.id) {
+        await apiFetch(`/task-templates/${templateDraft.id}`, {
+          method: 'PATCH',
+          token: token || undefined,
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            title: payload.title,
+            description: payload.description,
+            durationMinutes: payload.durationMinutes,
+            tags: payload.tags,
+          }),
+        })
+      } else {
+        await apiFetch('/task-templates', {
+          method: 'POST',
+          token: token || undefined,
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+      }
+      await fetchTemplates()
+      resetTemplateDraft()
+      setBulkToast({ message: 'Template opgeslagen.', severity: 'success' })
+    } catch (e) {
+      setBulkToast({
+        message: e instanceof Error ? e.message : 'Template opslaan mislukt.',
+        severity: 'error',
+      })
+    } finally {
+      setTemplateSaving(false)
+    }
+  }
+
+  async function deleteTemplate(templateId: string) {
+    if (!canEdit) return
+    if (!token) return
+    const ok = window.confirm('Template verwijderen?')
+    if (!ok) return
+    try {
+      await apiFetch(`/task-templates/${templateId}`, {
+        method: 'DELETE',
+        token: token || undefined,
+      })
+      if (selectedTemplateId === templateId) setSelectedTemplateId('')
+      if (templateDraft.id === templateId) resetTemplateDraft()
+      await fetchTemplates()
+      setBulkToast({ message: 'Template verwijderd.', severity: 'success' })
+    } catch (e) {
+      setBulkToast({
+        message: e instanceof Error ? e.message : 'Template verwijderen mislukt.',
+        severity: 'error',
+      })
+    }
+  }
+
   return (
     <Box sx={{ display: 'grid', gap: { xs: 1.5, sm: 2 } }}>
       <Typography variant="h5" sx={{ fontWeight: 800, fontSize: { xs: '1.125rem', sm: '1.25rem' } }}>
@@ -720,6 +820,78 @@ export function PlanningPage() {
               >
                 Toepassen op week
               </Button>
+              {canEdit && (
+                <Stack spacing={1} sx={{ pt: 0.5 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                    Template beheren
+                  </Typography>
+                  <TextField
+                    label="Titel"
+                    size="small"
+                    value={templateDraft.title}
+                    onChange={(e) => setTemplateDraft((d) => ({ ...d, title: e.target.value }))}
+                    disabled={templateSaving}
+                  />
+                  <TextField
+                    label="Beschrijving"
+                    size="small"
+                    value={templateDraft.description}
+                    onChange={(e) => setTemplateDraft((d) => ({ ...d, description: e.target.value }))}
+                    disabled={templateSaving}
+                  />
+                  <TextField
+                    label="Duur (min)"
+                    type="number"
+                    size="small"
+                    value={templateDraft.durationMinutes}
+                    onChange={(e) => setTemplateDraft((d) => ({ ...d, durationMinutes: Number(e.target.value) }))}
+                    inputProps={{ min: 5, max: 600 }}
+                    disabled={templateSaving}
+                  />
+                  <TextField
+                    label="Tags (comma-separated)"
+                    size="small"
+                    value={templateDraft.tags}
+                    onChange={(e) => setTemplateDraft((d) => ({ ...d, tags: e.target.value }))}
+                    disabled={templateSaving}
+                  />
+                  <Stack direction="row" spacing={1}>
+                    <Button variant="contained" size="small" onClick={saveTemplate} disabled={templateSaving}>
+                      {templateDraft.id ? 'Bijwerken' : 'Aanmaken'}
+                    </Button>
+                    <Button variant="text" size="small" onClick={resetTemplateDraft} disabled={templateSaving}>
+                      Wissen
+                    </Button>
+                  </Stack>
+                </Stack>
+              )}
+              {templates.length > 0 && (
+                <Stack spacing={0.5} sx={{ pt: 0.5 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                    Bestaande templates
+                  </Typography>
+                  {templates.map((t) => (
+                    <Stack key={t.id} direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                      <Typography variant="body2" noWrap sx={{ flex: 1 }}>
+                        {t.title}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {t.durationMinutes} min
+                      </Typography>
+                      {canEdit && (
+                        <Stack direction="row" spacing={0.5}>
+                          <Button size="small" onClick={() => startEditTemplate(t)}>
+                            Bewerken
+                          </Button>
+                          <Button size="small" color="error" onClick={() => void deleteTemplate(t.id)}>
+                            Verwijder
+                          </Button>
+                        </Stack>
+                      )}
+                    </Stack>
+                  ))}
+                </Stack>
+              )}
             </Stack>
           </Paper>
         </Box>

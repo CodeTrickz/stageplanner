@@ -2,20 +2,25 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import SearchIcon from '@mui/icons-material/Search'
 import {
   Box,
+  Button,
+  Checkbox,
   Chip,
   IconButton,
   InputAdornment,
   MenuItem,
   Paper,
   Stack,
+  Snackbar,
   TextField,
   Typography,
 } from '@mui/material'
+import Alert from '@mui/material/Alert'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiFetch, useApiToken } from '../api/client'
 import { useWorkspace } from '../hooks/useWorkspace'
 import { useWorkspaceEvents } from '../hooks/useWorkspaceEvents'
+import { getWorkspacePermissions } from '../utils/permissions'
 
 type ServerPlanningItem = {
   id: string
@@ -34,11 +39,19 @@ export function TasksOverviewPage() {
   const navigate = useNavigate()
   const token = useApiToken()
   const { currentWorkspace } = useWorkspace()
+  const permissions = getWorkspacePermissions(currentWorkspace?.role)
+  const canEdit = permissions.canEdit
   const [q, setQ] = useState('')
   const [priority, setPriority] = useState<'all' | ServerPlanningItem['priority']>('all')
   const [status, setStatus] = useState<'all' | ServerPlanningItem['status']>('all')
   const [items, setItems] = useState<ServerPlanningItem[]>([])
   const [refreshTick, setRefreshTick] = useState(0)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [lastSelectedId, setLastSelectedId] = useState<string | null>(null)
+  const [bulkStatus, setBulkStatus] = useState<ServerPlanningItem['status'] | ''>('')
+  const [bulkPriority, setBulkPriority] = useState<ServerPlanningItem['priority'] | ''>('')
+  const [bulkLoading, setBulkLoading] = useState(false)
+  const [bulkToast, setBulkToast] = useState<{ message: string; severity: 'success' | 'error' } | null>(null)
 
   useWorkspaceEvents((evt) => {
     if (evt.type === 'planning') setRefreshTick((v) => v + 1)
@@ -96,6 +109,123 @@ export function TasksOverviewPage() {
     return Array.from(map.entries())
   }, [filtered])
 
+  function toggleSelection(id: string, checked: boolean, shiftKey: boolean) {
+    const orderedIds = filtered.map((it) => it.id)
+    const next = new Set(selectedIds)
+    if (shiftKey && lastSelectedId) {
+      const start = orderedIds.indexOf(lastSelectedId)
+      const end = orderedIds.indexOf(id)
+      if (start >= 0 && end >= 0) {
+        const [from, to] = start < end ? [start, end] : [end, start]
+        for (const itemId of orderedIds.slice(from, to + 1)) {
+          if (checked) next.add(itemId)
+          else next.delete(itemId)
+        }
+      } else if (checked) {
+        next.add(id)
+      } else {
+        next.delete(id)
+      }
+    } else if (checked) {
+      next.add(id)
+    } else {
+      next.delete(id)
+    }
+    setSelectedIds(Array.from(next))
+    setLastSelectedId(id)
+  }
+
+  async function applyBulkUpdate() {
+    if (!canEdit) return
+    if (!token || !currentWorkspace?.id) return
+    const updates: { status?: ServerPlanningItem['status']; priority?: ServerPlanningItem['priority'] } = {}
+    if (bulkStatus) updates.status = bulkStatus
+    if (bulkPriority) updates.priority = bulkPriority
+
+    if (Object.keys(updates).length === 0) {
+      setBulkToast({ message: 'Kies minstens één veld om aan te passen.', severity: 'error' })
+      return
+    }
+    if (selectedIds.length > 10) {
+      const ok = window.confirm(`Je staat op het punt ${selectedIds.length} items bij te werken. Doorgaan?`)
+      if (!ok) return
+    }
+
+    setBulkLoading(true)
+    try {
+      const result = await apiFetch('/planning/bulk', {
+        method: 'PATCH',
+        token: token || undefined,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          workspaceId: currentWorkspace.id,
+          itemIds: selectedIds,
+          updates,
+        }),
+      })
+      const updatedCount = Number(result.updatedCount || 0)
+      setItems((prev) =>
+        prev.map((it) => {
+          if (!selectedIds.includes(it.id)) return it
+          return {
+            ...it,
+            status: updates.status ?? it.status,
+            priority: updates.priority ?? it.priority,
+          }
+        }),
+      )
+      setSelectedIds([])
+      setLastSelectedId(null)
+      setBulkStatus('')
+      setBulkPriority('')
+      setRefreshTick((v) => v + 1)
+      setBulkToast({ message: `${updatedCount || selectedIds.length} items bijgewerkt.`, severity: 'success' })
+    } catch (e) {
+      setBulkToast({ message: 'Bulk update mislukt. Probeer opnieuw.', severity: 'error' })
+      if (import.meta.env.DEV) {
+        console.error('Failed to bulk update tasks:', e)
+      }
+    } finally {
+      setBulkLoading(false)
+    }
+  }
+
+  async function applyBulkDelete() {
+    if (!canEdit) return
+    if (!token || !currentWorkspace?.id) return
+    if (selectedIds.length === 0) return
+    const ok = window.confirm(
+      `Je staat op het punt ${selectedIds.length} items te verwijderen. Dit kan niet ongedaan worden gemaakt.`,
+    )
+    if (!ok) return
+
+    setBulkLoading(true)
+    try {
+      const result = await apiFetch('/planning/bulk-delete', {
+        method: 'POST',
+        token: token || undefined,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          workspaceId: currentWorkspace.id,
+          itemIds: selectedIds,
+        }),
+      })
+      const deletedCount = Number(result.deletedCount || 0)
+      setItems((prev) => prev.filter((it) => !selectedIds.includes(it.id)))
+      setSelectedIds([])
+      setLastSelectedId(null)
+      setRefreshTick((v) => v + 1)
+      setBulkToast({ message: `${deletedCount || selectedIds.length} items verwijderd.`, severity: 'success' })
+    } catch (e) {
+      setBulkToast({ message: 'Bulk verwijderen mislukt. Probeer opnieuw.', severity: 'error' })
+      if (import.meta.env.DEV) {
+        console.error('Failed to bulk delete tasks:', e)
+      }
+    } finally {
+      setBulkLoading(false)
+    }
+  }
+
   return (
     <Box sx={{ display: 'grid', gap: { xs: 1.5, sm: 2 } }}>
       <Typography variant="h5" sx={{ fontWeight: 800, fontSize: { xs: '1.125rem', sm: '1.25rem' } }}>
@@ -149,6 +279,71 @@ export function TasksOverviewPage() {
         </Stack>
       </Paper>
 
+      {selectedIds.length > 0 && (
+        <Paper variant="outlined" sx={{ p: 1.5 }}>
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1.5}
+            alignItems={{ xs: 'stretch', sm: 'center' }}
+            useFlexGap
+            flexWrap="wrap"
+          >
+            <Typography sx={{ fontWeight: 700 }}>{selectedIds.length} geselecteerd</Typography>
+            <TextField
+              label="Status"
+              select
+              size="small"
+              value={bulkStatus}
+              onChange={(e) => setBulkStatus(e.target.value as ServerPlanningItem['status'] | '')}
+              sx={{ minWidth: 160 }}
+              disabled={bulkLoading || !canEdit}
+            >
+              <MenuItem value="">Ongewijzigd</MenuItem>
+              <MenuItem value="todo">Todo</MenuItem>
+              <MenuItem value="in_progress">In progress</MenuItem>
+              <MenuItem value="done">Done</MenuItem>
+            </TextField>
+            <TextField
+              label="Prioriteit"
+              select
+              size="small"
+              value={bulkPriority}
+              onChange={(e) => setBulkPriority(e.target.value as ServerPlanningItem['priority'] | '')}
+              sx={{ minWidth: 160 }}
+              disabled={bulkLoading || !canEdit}
+            >
+              <MenuItem value="">Ongewijzigd</MenuItem>
+              <MenuItem value="low">Low</MenuItem>
+              <MenuItem value="medium">Medium</MenuItem>
+              <MenuItem value="high">High</MenuItem>
+            </TextField>
+            <Button variant="contained" size="small" onClick={applyBulkUpdate} disabled={bulkLoading || !canEdit}>
+              {bulkLoading ? 'Bezig...' : 'Toepassen'}
+            </Button>
+            <Button
+              variant="outlined"
+              color="error"
+              size="small"
+              onClick={applyBulkDelete}
+              disabled={bulkLoading || !canEdit}
+            >
+              Verwijderen
+            </Button>
+            <Button
+              variant="text"
+              size="small"
+              onClick={() => {
+                setSelectedIds([])
+                setLastSelectedId(null)
+              }}
+              disabled={bulkLoading || !canEdit}
+            >
+              Selectie wissen
+            </Button>
+          </Stack>
+        </Paper>
+      )}
+
       {grouped.map(([date, list]) => (
         <Paper key={date} variant="outlined" sx={{ p: 2 }}>
           <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
@@ -162,6 +357,16 @@ export function TasksOverviewPage() {
                 variant="outlined"
                 sx={{ p: 1.5, display: 'flex', gap: 2, alignItems: 'center' }}
               >
+                <Checkbox
+                  size="small"
+                  checked={selectedIds.includes(it.id)}
+                  onChange={(e) => {
+                    const native = e.nativeEvent as MouseEvent
+                    toggleSelection(it.id, e.target.checked, !!native.shiftKey)
+                  }}
+                  inputProps={{ 'aria-label': 'Selecteer taak' }}
+                  disabled={!canEdit}
+                />
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                   <Typography sx={{ fontWeight: 800 }} noWrap>
                     {it.start} – {it.end} • {it.title}
@@ -195,6 +400,11 @@ export function TasksOverviewPage() {
           </Box>
         </Paper>
       ))}
+      <Snackbar open={!!bulkToast} autoHideDuration={4000} onClose={() => setBulkToast(null)}>
+        <Alert onClose={() => setBulkToast(null)} severity={bulkToast?.severity || 'success'} sx={{ width: '100%' }}>
+          {bulkToast?.message}
+        </Alert>
+      </Snackbar>
     </Box>
   )
 }

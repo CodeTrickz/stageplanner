@@ -4,7 +4,7 @@ A modern planning application with backend and frontend, built with React, TypeS
 
 ## Overview
 
-Stage Planner is a full‑stack application for day planning, file management, and notes with workspace scoping and realtime updates:
+Stage Planner is a full‑stack application for day planning, file management, and notes with workspace scoping, notifications, and realtime updates:
 
 - **Frontend**: React + TypeScript (Vite) with Material UI
 - **Backend**: Express + TypeScript with SQLite database
@@ -78,6 +78,9 @@ Copy `backend/env.example` to `backend/env.local` and edit:
 - `CORS_ORIGIN`: CORS origin (must match frontend URL)
 - `SMTP_HOST/SMTP_USER/SMTP_PASS`: SMTP config for real emails
 - `MAIL_FROM`: sender address for emails (optional, defaults to `SMTP_USER`)
+- `CACHE_TTL_SECONDS`: cache TTL for GET endpoints (default 30)
+- `NOTIFICATIONS_SOON_DAYS`: days before deadline to notify (0 disables "soon")
+- `NOTIFICATIONS_JOB_INTERVAL_MS`: job interval for deadline scan (ms)
 
 #### Admin user
 
@@ -125,7 +128,8 @@ Important:
 - ✅ Day planning with time slots
 - ✅ Week overview (7 days)
 - ✅ Task overview with filters
-- ✅ Bulk actions in planning (multi-select, status/priority/tags)
+- ✅ Bulk actions in planning (multi-select, status/priority/tags, delete)
+- ✅ Bulk actions in tasks overview (status/priority + delete)
 - ✅ File management (upload/download via backend, stored in SQLite)
 - ✅ Notes with attachments
 - ✅ Export (.txt, .zip)
@@ -136,7 +140,10 @@ Important:
 - ✅ Internship day tracking (workdays vs home project)
 - ✅ Workspace-scoped collaboration + realtime updates
 - ✅ Workspace roles (owner/editor/commenter/viewer)
-- ✅ Task templates per workspace (apply to a week)
+- ✅ Task templates per workspace (apply to a week, priority/status, stage day)
+- ✅ Deadline notifications (in-app + optional email)
+- ✅ Global search with filters and sorting
+- ✅ Rate-limit friendly UX + error log viewer
 
 ## Contributing
 
@@ -167,7 +174,7 @@ npm install
 
 ### Releases (SemVer)
 
-Releases are automated with `semantic-release`, which generates `CHANGELOG.md`, creates a `vX.Y.Z` tag, and publishes a GitHub Release.
+Releases are automated with `standard-version`, which updates `CHANGELOG.md`, bumps the version, and creates a `vX.Y.Z` tag. The release script also publishes a GitHub Release.
 
 To cut a release:
 
@@ -177,7 +184,7 @@ npm run release
 
 Requirements:
 
-- The release runner must have `GH_TOKEN` with repo scope.
+- The release runner must have `GH_TOKEN` (or `GITHUB_TOKEN`) with repo scope.
 - Commits must follow the Conventional Commits format to drive version bumps.
 
 ### Issue Templates

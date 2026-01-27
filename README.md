@@ -195,6 +195,9 @@ See [LICENSE](./LICENSE) for license information.
 ## Security
 
 See [SECURITY.md](./SECURITY.md) for security reporting details.
+Security practices:
+- Dependabot runs weekly and groups updates by scope.
+- CI fails on high-severity `npm audit` findings for frontend and backend.
 
 ## Documentation
 

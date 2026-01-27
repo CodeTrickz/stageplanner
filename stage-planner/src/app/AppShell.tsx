@@ -10,6 +10,7 @@ import MenuIcon from '@mui/icons-material/Menu'
 import PeopleIcon from '@mui/icons-material/People'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
 import {
+  Alert,
   AppBar,
   Box,
   Button,
@@ -25,6 +26,7 @@ import {
   ListItemText,
   Menu,
   MenuItem,
+  Snackbar,
   Toolbar,
   Typography,
   useMediaQuery,
@@ -33,7 +35,7 @@ import {
 import React from 'react'
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/auth'
-import { subscribeApiStatus } from '../api/client'
+import { subscribeApiStatus, subscribeRateLimit } from '../api/client'
 import { useBackendHealth } from '../hooks/useBackendHealth'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { GlobalSearchDialog } from '../components/GlobalSearchDialog'
@@ -77,8 +79,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     lastSuccessAt: null,
     lastErrorAt: null,
   })
+  const [rateLimitMessage, setRateLimitMessage] = React.useState<string | null>(null)
 
   React.useEffect(() => subscribeApiStatus(setApi), [])
+  React.useEffect(
+    () =>
+      subscribeRateLimit((evt) => {
+        setRateLimitMessage(evt.message)
+      }),
+    [],
+  )
 
   const statusChip = (() => {
     if (!user) return <Chip size="small" label="Local" variant="outlined" />
@@ -411,6 +421,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <Container sx={{ py: 2, flex: 1, px: { xs: 1, sm: 1.5, md: 2 } }}>{children}</Container>
       <GlobalSearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} />
+      <Snackbar
+        open={!!rateLimitMessage}
+        autoHideDuration={6000}
+        onClose={() => setRateLimitMessage(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setRateLimitMessage(null)} severity="warning" sx={{ width: '100%' }}>
+          {rateLimitMessage}
+        </Alert>
+      </Snackbar>
     </Box>
   )
 }

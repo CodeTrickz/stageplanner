@@ -89,7 +89,11 @@ function makeRateLimiter(opts: RateLimitOptions) {
     if (cur.count > opts.max) {
       const retryAfterSec = Math.max(1, Math.ceil((cur.resetAt - now) / 1000))
       res.setHeader('Retry-After', String(retryAfterSec))
-      return res.status(429).json({ error: 'rate_limited' })
+      return res.status(429).json({
+        error: 'rate_limited',
+        message: `Je doet te veel verzoeken. Probeer het over ${retryAfterSec} seconden opnieuw.`,
+        retryAfter: retryAfterSec,
+      })
     }
     return next()
   }

@@ -10,8 +10,14 @@ type ApiStatus = {
   lastErrorAt: number | null
 }
 
+export type RateLimitEvent = {
+  retryAfterSec: number
+  message: string
+}
+
 const status: ApiStatus = { inFlight: 0, lastSuccessAt: null, lastErrorAt: null }
 const listeners = new Set<(s: ApiStatus) => void>()
+const rateLimitListeners = new Set<(evt: RateLimitEvent) => void>()
 
 function emit() {
   const snapshot = { ...status }
@@ -24,6 +30,17 @@ export function subscribeApiStatus(fn: (s: ApiStatus) => void) {
   return () => {
     listeners.delete(fn)
   }
+}
+
+export function subscribeRateLimit(fn: (evt: RateLimitEvent) => void) {
+  rateLimitListeners.add(fn)
+  return () => {
+    rateLimitListeners.delete(fn)
+  }
+}
+
+function emitRateLimit(evt: RateLimitEvent) {
+  for (const l of rateLimitListeners) l(evt)
 }
 
 export async function apiFetch(path: string, options: RequestInit & { token?: string } = {}) {
@@ -41,6 +58,14 @@ export async function apiFetch(path: string, options: RequestInit & { token?: st
     })
     const data = await res.json().catch(() => ({}))
     if (!res.ok) {
+      if (res.status === 429) {
+        const retryAfterHeader = Number(res.headers.get('retry-after'))
+        const retryAfterSec = Number.isFinite(retryAfterHeader) ? retryAfterHeader : Number(data?.retryAfter || 0)
+        const message =
+          data?.message ||
+          `Je doet te veel verzoeken. Probeer het over ${retryAfterSec || 1} seconden opnieuw.`
+        emitRateLimit({ retryAfterSec: retryAfterSec || 1, message })
+      }
       status.lastErrorAt = Date.now()
       emit()
       void logAppError({

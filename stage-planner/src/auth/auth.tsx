@@ -9,6 +9,7 @@ type User = {
   lastName?: string
   isAdmin?: boolean
   emailVerified?: boolean
+  notifyDeadlineEmail?: boolean
 }
 type AuthState = { token: string; user: User; expiresAt: number }
 

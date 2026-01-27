@@ -12,6 +12,7 @@ export type DbUser = {
   passwordHash: string
   isAdmin: 0 | 1
   emailVerified: 0 | 1
+  notifyDeadlineEmail: 0 | 1
   groupId: string | null
   emailVerificationTokenHash: string | null
   emailVerificationExpiresAt: number | null
@@ -313,6 +314,7 @@ function openSqlite() {
       password_hash TEXT NOT NULL,
       is_admin INTEGER NOT NULL DEFAULT 0,
       email_verified INTEGER NOT NULL DEFAULT 0,
+      notify_deadline_email INTEGER NOT NULL DEFAULT 1,
       group_id TEXT,
       email_verification_token_hash TEXT,
       email_verification_expires_at INTEGER,
@@ -440,6 +442,7 @@ function openSqlite() {
   addCol('first_name', 'first_name TEXT')
   addCol('last_name', 'last_name TEXT')
   addCol('email_verified', 'email_verified INTEGER NOT NULL DEFAULT 0')
+  addCol('notify_deadline_email', 'notify_deadline_email INTEGER NOT NULL DEFAULT 1')
   addCol('is_admin', 'is_admin INTEGER NOT NULL DEFAULT 0')
   addCol('group_id', 'group_id TEXT')
   addCol('email_verification_token_hash', 'email_verification_token_hash TEXT')
@@ -1114,6 +1117,7 @@ export const db = {
       passwordHash: input.passwordHash,
       isAdmin: input.isAdmin ? 1 : 0,
       emailVerified: input.emailVerified ? 1 : 0,
+      notifyDeadlineEmail: 1,
       groupId: input.groupId ?? null,
       emailVerificationTokenHash: input.emailVerificationTokenHash ?? null,
       emailVerificationExpiresAt: input.emailVerificationExpiresAt ?? null,
@@ -1134,9 +1138,9 @@ export const db = {
       sqliteDb
         .prepare(
           `INSERT INTO users
-             (id, username, first_name, last_name, email, password_hash, is_admin, email_verified, group_id, email_verification_token_hash, email_verification_expires_at, password_reset_token_hash, password_reset_expires_at, created_at, updated_at)
+             (id, username, first_name, last_name, email, password_hash, is_admin, email_verified, notify_deadline_email, group_id, email_verification_token_hash, email_verification_expires_at, password_reset_token_hash, password_reset_expires_at, created_at, updated_at)
            VALUES
-             (@id, @username, @firstName, @lastName, @email, @passwordHash, @isAdmin, @emailVerified, @groupId, @emailVerificationTokenHash, @emailVerificationExpiresAt, @passwordResetTokenHash, @passwordResetExpiresAt, @createdAt, @updatedAt)`,
+             (@id, @username, @firstName, @lastName, @email, @passwordHash, @isAdmin, @emailVerified, @notifyDeadlineEmail, @groupId, @emailVerificationTokenHash, @emailVerificationExpiresAt, @passwordResetTokenHash, @passwordResetExpiresAt, @createdAt, @updatedAt)`,
         )
         .run({
           id: user.id,
@@ -1147,6 +1151,7 @@ export const db = {
           passwordHash: user.passwordHash,
           isAdmin: user.isAdmin,
           emailVerified: user.emailVerified,
+          notifyDeadlineEmail: user.notifyDeadlineEmail,
           groupId: user.groupId,
           emailVerificationTokenHash: user.emailVerificationTokenHash,
           emailVerificationExpiresAt: user.emailVerificationExpiresAt,
@@ -1205,6 +1210,7 @@ export const db = {
              password_hash as passwordHash,
              is_admin as isAdmin,
              email_verified as emailVerified,
+             notify_deadline_email as notifyDeadlineEmail,
              group_id as groupId,
              email_verification_token_hash as emailVerificationTokenHash,
              email_verification_expires_at as emailVerificationExpiresAt,
@@ -1234,6 +1240,7 @@ export const db = {
              password_hash as passwordHash,
              is_admin as isAdmin,
              email_verified as emailVerified,
+             notify_deadline_email as notifyDeadlineEmail,
              group_id as groupId,
              email_verification_token_hash as emailVerificationTokenHash,
              email_verification_expires_at as emailVerificationExpiresAt,
@@ -1291,6 +1298,7 @@ export const db = {
              email,
              is_admin as isAdmin,
              email_verified as emailVerified,
+             notify_deadline_email as notifyDeadlineEmail,
              group_id as groupId,
              email_verification_token_hash as emailVerificationTokenHash,
              email_verification_expires_at as emailVerificationExpiresAt,
@@ -1313,7 +1321,12 @@ export const db = {
 
   updateUser: (
     id: string,
-    patch: Partial<Pick<DbUser, 'email' | 'username' | 'firstName' | 'lastName' | 'emailVerified' | 'isAdmin' | 'groupId'>>,
+    patch: Partial<
+      Pick<
+        DbUser,
+        'email' | 'username' | 'firstName' | 'lastName' | 'emailVerified' | 'isAdmin' | 'groupId' | 'notifyDeadlineEmail'
+      >
+    >,
   ): Omit<DbUser, 'passwordHash'> | null => {
     const t = now()
     if (sqliteDb) {
@@ -1327,6 +1340,7 @@ export const db = {
              email,
              is_admin as isAdmin,
              email_verified as emailVerified,
+             notify_deadline_email as notifyDeadlineEmail,
              group_id as groupId,
              email_verification_token_hash as emailVerificationTokenHash,
              email_verification_expires_at as emailVerificationExpiresAt,
@@ -1346,6 +1360,7 @@ export const db = {
         lastName: patch.lastName ?? current.lastName,
         isAdmin: patch.isAdmin ?? current.isAdmin,
         emailVerified: patch.emailVerified ?? current.emailVerified,
+        notifyDeadlineEmail: patch.notifyDeadlineEmail ?? current.notifyDeadlineEmail,
         groupId: patch.groupId ?? current.groupId,
       }
 
@@ -1353,7 +1368,8 @@ export const db = {
         .prepare(
           `UPDATE users
            SET email=@email, username=@username, first_name=@firstName, last_name=@lastName,
-               is_admin=@isAdmin, email_verified=@emailVerified, group_id=@groupId, updated_at=@updatedAt
+              is_admin=@isAdmin, email_verified=@emailVerified, notify_deadline_email=@notifyDeadlineEmail,
+              group_id=@groupId, updated_at=@updatedAt
            WHERE id=@id`,
         )
         .run({ ...next, updatedAt: t, id })
@@ -1373,6 +1389,7 @@ export const db = {
       lastName: patch.lastName ?? u.lastName,
       isAdmin: patch.isAdmin ?? u.isAdmin,
       emailVerified: patch.emailVerified ?? u.emailVerified,
+      notifyDeadlineEmail: patch.notifyDeadlineEmail ?? u.notifyDeadlineEmail ?? 1,
       groupId: patch.groupId ?? u.groupId,
       updatedAt: t,
     }

@@ -154,6 +154,7 @@ export function SettingsPage() {
     username: user?.username ?? '',
     firstName: user?.firstName ?? '',
     lastName: user?.lastName ?? '',
+    notifyDeadlineEmail: user?.notifyDeadlineEmail ?? true,
   })
 
   const [pw, setPw] = useState({ current: '', next: '', next2: '' })
@@ -167,8 +168,9 @@ export function SettingsPage() {
       username: user?.username ?? '',
       firstName: user?.firstName ?? '',
       lastName: user?.lastName ?? '',
+      notifyDeadlineEmail: user?.notifyDeadlineEmail ?? true,
     })
-  }, [user?.username, user?.firstName, user?.lastName])
+  }, [user?.username, user?.firstName, user?.lastName, user?.notifyDeadlineEmail])
 
   async function refreshMe() {
     if (!token) return
@@ -190,6 +192,7 @@ export function SettingsPage() {
           username: profile.username?.trim() || undefined,
           firstName: profile.firstName?.trim() || undefined,
           lastName: profile.lastName?.trim() || undefined,
+          notifyDeadlineEmail: profile.notifyDeadlineEmail,
         }),
       })
       if (data?.user?.id) login(token, data.user)
@@ -473,6 +476,15 @@ export function SettingsPage() {
           {token && (
             <>
               <TextField label="Email" value={user?.email ?? ''} disabled />
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={profile.notifyDeadlineEmail}
+                    onChange={(e) => setProfile((p) => ({ ...p, notifyDeadlineEmail: e.target.checked }))}
+                  />
+                }
+                label="E-mail notificaties bij deadlines"
+              />
               <TextField
                 label="Username"
                 value={profile.username}

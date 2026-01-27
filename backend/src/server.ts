@@ -700,6 +700,7 @@ app.post('/auth/login', rlAuthIp, rlLoginIdentity, asyncHandler(async (req, res)
       firstName: user.firstName,
       lastName: user.lastName,
       isAdmin: !!user.isAdmin,
+      notifyDeadlineEmail: user.notifyDeadlineEmail !== 0,
     },
   })
 }))
@@ -755,6 +756,7 @@ app.get('/me', requireAuth, (req, res) => {
       lastName: u.lastName,
       isAdmin: !!u.isAdmin,
       emailVerified: !!u.emailVerified,
+      notifyDeadlineEmail: u.notifyDeadlineEmail !== 0,
     },
   })
 })
@@ -764,8 +766,11 @@ const mePatchSchema = z
     username: z.string().min(3).max(32).regex(/^[a-zA-Z0-9._-]+$/).optional(),
     firstName: z.string().min(1).max(80).optional(),
     lastName: z.string().min(1).max(80).optional(),
+    notifyDeadlineEmail: z.boolean().optional(),
   })
-  .refine((d) => d.username != null || d.firstName != null || d.lastName != null, { message: 'empty_patch' })
+  .refine((d) => d.username != null || d.firstName != null || d.lastName != null || d.notifyDeadlineEmail != null, {
+    message: 'empty_patch',
+  })
 
 app.patch('/me', requireAuth, (req, res) => {
   const u = getDbUserOr401(req, res)
@@ -783,6 +788,7 @@ app.patch('/me', requireAuth, (req, res) => {
     username: patch.username,
     firstName: patch.firstName,
     lastName: patch.lastName,
+    notifyDeadlineEmail: patch.notifyDeadlineEmail !== undefined ? (patch.notifyDeadlineEmail ? 1 : 0) : undefined,
   })
   if (!updated) return res.status(404).json({ error: 'not_found' })
 
@@ -796,6 +802,7 @@ app.patch('/me', requireAuth, (req, res) => {
       lastName: updated.lastName,
       isAdmin: !!updated.isAdmin,
       emailVerified: !!updated.emailVerified,
+      notifyDeadlineEmail: updated.notifyDeadlineEmail !== 0,
     },
   })
 })
@@ -2758,6 +2765,7 @@ function runNotificationsJob() {
   for (const [userId, notifications] of byUser.entries()) {
     const user = db.findUserById(userId)
     if (!user?.email) continue
+    if (user.notifyDeadlineEmail === 0) continue
     const lines = notifications
       .sort((a, b) => a.dueAt - b.dueAt)
       .map((n) => `- ${n.title}: ${n.body}`)

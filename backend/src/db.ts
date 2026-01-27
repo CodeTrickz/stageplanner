@@ -211,6 +211,7 @@ export type DbSearchPlanning = {
   status: DbPlanningItem['status']
   priority: DbPlanningItem['priority']
   tagsJson: string
+  updatedAt: number
 }
 
 export type DbSearchNote = {
@@ -2422,7 +2423,7 @@ export const db = {
       planningParams.push(limit)
       const planning = sqliteDb
         .prepare(
-          `SELECT id, date, start, end, title, notes, status, priority, tags_json as tagsJson
+          `SELECT id, date, start, end, title, notes, status, priority, tags_json as tagsJson, updated_at as updatedAt
            FROM planning_items
            WHERE ${planningClauses.join(' AND ')}
            ORDER BY date DESC, start DESC
@@ -2516,6 +2517,7 @@ export const db = {
             status: p.status,
             priority: p.priority,
             tagsJson: p.tagsJson ?? '[]',
+            updatedAt: p.updatedAt,
           }) as DbSearchPlanning,
       )
 

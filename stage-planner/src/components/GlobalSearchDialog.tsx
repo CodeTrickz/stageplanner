@@ -20,10 +20,9 @@ import { apiFetch, useApiToken } from '../api/client'
 import { useWorkspace } from '../hooks/useWorkspace'
 import { useWorkspaceEvents } from '../hooks/useWorkspaceEvents'
 
-type Result =
-  | { kind: 'planning'; id: string; primary: string; secondary: string; date: string }
-  | { kind: 'note'; id: string; primary: string; secondary: string }
-  | { kind: 'file'; groupKey: string; primary: string; secondary: string }
+type PlanningResult = { kind: 'planning'; id: string; primary: string; secondary: string; date: string; start: string }
+type NoteResult = { kind: 'note'; id: string; primary: string; secondary: string; updatedAt: number }
+type FileResult = { kind: 'file'; groupKey: string; primary: string; secondary: string; updatedAt: number }
 
 function stripHtml(html: string) {
   try {
@@ -52,7 +51,11 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
   const [tag, setTag] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
-  const [results, setResults] = useState<Result[] | null>(null)
+  const [results, setResults] = useState<{
+    planning: PlanningResult[]
+    notes: NoteResult[]
+    files: FileResult[]
+  } | null>(null)
 
   const qq = useMemo(() => q.trim().toLowerCase(), [q])
 
@@ -79,7 +82,9 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
         setResults([])
         return
       }
-      const out: Result[] = []
+      const planningOut: PlanningResult[] = []
+      const notesOut: NoteResult[] = []
+      const filesOut: FileResult[] = []
       const workspaceId = String(currentWorkspace.id)
       const params = new URLSearchParams({ workspaceId })
       if (qq) params.set('q', qq)
@@ -99,12 +104,14 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
           title: string
           status: string
           priority: string
+          updatedAt: number
         }>
         for (const it of planning) {
-          out.push({
+          planningOut.push({
             kind: 'planning',
             id: it.id,
             date: it.date,
+            start: it.start,
             primary: it.title,
             secondary: `${it.date} ${it.start}-${it.end} • ${it.status}/${it.priority}`,
           })
@@ -113,28 +120,41 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
         const notes = (res.notes || []) as Array<{ id: string; subject: string; body: string; updatedAt: number }>
         for (const n of notes) {
           const bodyTxt = stripHtml(n.body || '')
-          out.push({
+          notesOut.push({
             kind: 'note',
             id: n.id,
             primary: n.subject?.trim() ? n.subject : '(zonder onderwerp)',
             secondary: `${new Date(n.updatedAt).toLocaleString()} • ${bodyTxt.slice(0, 60)}`,
+            updatedAt: n.updatedAt,
           })
         }
 
-        const files = (res.files || []) as Array<{ groupKey: string; name: string; type: string; folder?: string | null }>
+        const files = (res.files || []) as Array<{
+          groupKey: string
+          name: string
+          type: string
+          folder?: string | null
+          updatedAt: number
+        }>
         for (const f of files) {
-          out.push({
+          filesOut.push({
             kind: 'file',
             groupKey: f.groupKey,
             primary: f.name,
             secondary: f.folder ? `Folder: ${f.folder}` : f.type,
+            updatedAt: f.updatedAt,
           })
         }
       } catch {
         // ignore
       }
 
-      if (!cancelled) setResults(out.slice(0, 30))
+      if (!cancelled)
+        setResults({
+          planning: planningOut.sort((a, b) => (b.date + b.start).localeCompare(a.date + a.start)),
+          notes: notesOut.sort((a, b) => b.updatedAt - a.updatedAt),
+          files: filesOut.sort((a, b) => b.updatedAt - a.updatedAt),
+        })
     }, 250)
     return () => {
       cancelled = true
@@ -142,7 +162,7 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
     }
   }, [open, qq, token, currentWorkspace?.id, refreshTick, status, priority, tag, dateFrom, dateTo])
 
-  function go(r: Result) {
+  function go(r: PlanningResult | NoteResult | FileResult) {
     onClose()
     if (r.kind === 'planning') nav(`/planning?date=${encodeURIComponent(r.date)}`)
     if (r.kind === 'note') nav(`/notities?noteId=${encodeURIComponent(String(r.id))}`)
@@ -216,15 +236,46 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
         <Box sx={{ mt: { xs: 1.5, sm: 2 } }}>
           {results == null ? (
             <Alert severity="info">Typ om te zoeken…</Alert>
-          ) : results.length === 0 ? (
+          ) : results.planning.length + results.notes.length + results.files.length === 0 ? (
             <Alert severity="info">Geen resultaten.</Alert>
           ) : (
             <List dense disablePadding>
-              {results.map((r, idx) => (
-                <ListItemButton key={idx} onClick={() => go(r)}>
-                  <ListItemText primary={r.primary} secondary={`${r.kind} • ${r.secondary}`} />
-                </ListItemButton>
-              ))}
+              {results.planning.length > 0 && (
+                <>
+                  <Typography variant="overline" sx={{ px: 1, color: 'text.secondary' }}>
+                    Planning
+                  </Typography>
+                  {results.planning.map((r, idx) => (
+                    <ListItemButton key={`planning-${r.id}-${idx}`} onClick={() => go(r)}>
+                      <ListItemText primary={r.primary} secondary={r.secondary} />
+                    </ListItemButton>
+                  ))}
+                </>
+              )}
+              {results.notes.length > 0 && (
+                <>
+                  <Typography variant="overline" sx={{ px: 1, color: 'text.secondary', mt: 1 }}>
+                    Notities
+                  </Typography>
+                  {results.notes.map((r, idx) => (
+                    <ListItemButton key={`note-${r.id}-${idx}`} onClick={() => go(r)}>
+                      <ListItemText primary={r.primary} secondary={r.secondary} />
+                    </ListItemButton>
+                  ))}
+                </>
+              )}
+              {results.files.length > 0 && (
+                <>
+                  <Typography variant="overline" sx={{ px: 1, color: 'text.secondary', mt: 1 }}>
+                    Bestanden
+                  </Typography>
+                  {results.files.map((r, idx) => (
+                    <ListItemButton key={`file-${r.groupKey}-${idx}`} onClick={() => go(r)}>
+                      <ListItemText primary={r.primary} secondary={r.secondary} />
+                    </ListItemButton>
+                  ))}
+                </>
+              )}
             </List>
           )}
         </Box>

@@ -24,6 +24,10 @@ jobs:
         working-directory: backend
         run: npm ci
 
+      - name: Backend - audit (high)
+        working-directory: backend
+        run: npm audit --audit-level=high --omit=dev
+
       - name: Backend - test
         working-directory: backend
         run: npm run test --if-present
@@ -35,6 +39,10 @@ jobs:
       - name: Frontend - install
         working-directory: stage-planner
         run: npm ci
+
+      - name: Frontend - audit (high)
+        working-directory: stage-planner
+        run: npm audit --audit-level=high
 
       - name: Frontend - lint
         working-directory: stage-planner

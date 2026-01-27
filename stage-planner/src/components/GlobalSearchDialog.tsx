@@ -14,11 +14,10 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiFetch, useApiToken } from '../api/client'
 import { useWorkspace } from '../hooks/useWorkspace'
-import { useWorkspaceEvents } from '../hooks/useWorkspaceEvents'
 
 type PlanningResult = { kind: 'planning'; id: string; primary: string; secondary: string; date: string; start: string }
 type NoteResult = { kind: 'note'; id: string; primary: string; secondary: string; updatedAt: number }
@@ -38,13 +37,6 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
   const theme = useTheme()
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
   const token = useApiToken()
-  const [refreshTick, setRefreshTick] = useState(0)
-
-  useWorkspaceEvents((evt) => {
-    if (['planning', 'notes', 'files', 'file_meta'].includes(evt.type)) {
-      setRefreshTick((v) => v + 1)
-    }
-  })
   const [q, setQ] = useState('')
   const [status, setStatus] = useState<'' | 'todo' | 'in_progress' | 'done'>('')
   const [priority, setPriority] = useState<'' | 'low' | 'medium' | 'high'>('')
@@ -59,6 +51,7 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
   } | null>(null)
 
   const qq = useMemo(() => q.trim().toLowerCase(), [q])
+  const lastSearchParamsRef = useRef<string>('')
 
   useEffect(() => {
     if (!open) return
@@ -84,6 +77,9 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
         setResults({ planning: [], notes: [], files: [] })
         return
       }
+      // Prevent API call if cancelled (e.g., user closed dialog or changed input)
+      if (cancelled) return
+      
       const planningOut: PlanningResult[] = []
       const notesOut: NoteResult[] = []
       const filesOut: FileResult[] = []
@@ -95,8 +91,21 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
       if (tag.trim()) params.set('tag', tag.trim())
       if (dateFrom) params.set('from', dateFrom)
       if (dateTo) params.set('to', dateTo)
+      
+      const paramsString = params.toString()
+      // Skip API call if parameters haven't changed (prevents duplicate calls)
+      if (paramsString === lastSearchParamsRef.current) {
+        return
+      }
+      lastSearchParamsRef.current = paramsString
+      
       try {
-        const res = await apiFetch(`/search?${params.toString()}`, { token: token || undefined })
+        const res = await apiFetch(`/search?${paramsString}`, { token: token || undefined })
+        
+        // Check again if cancelled after async operation
+        if (cancelled || !res) {
+          return
+        }
 
         const planning = (res.planning || []) as Array<{
           id: string
@@ -161,12 +170,16 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
           notes: notesOut.sort((a, b) => (sortOrder === 'newest' ? b.updatedAt - a.updatedAt : a.updatedAt - b.updatedAt)),
           files: filesOut.sort((a, b) => (sortOrder === 'newest' ? b.updatedAt - a.updatedAt : a.updatedAt - b.updatedAt)),
         })
-    }, 250)
+    }, 500) // Increased debounce from 250ms to 500ms to reduce API calls
     return () => {
       cancelled = true
       clearTimeout(t)
     }
-  }, [open, qq, token, currentWorkspace?.id, refreshTick, status, priority, tag, dateFrom, dateTo, sortOrder])
+  }, [open, qq, token, currentWorkspace?.id, status, priority, tag, dateFrom, dateTo, sortOrder])
+  
+  // Note: refreshTick is intentionally NOT in the dependency array above to prevent
+  // workspace events from triggering rapid API calls. Workspace events will naturally
+  // refresh when the user performs their next search action.
 
   function go(r: PlanningResult | NoteResult | FileResult) {
     onClose()

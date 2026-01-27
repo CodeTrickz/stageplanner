@@ -4,6 +4,14 @@
 
 - No changes yet.
 
+## [1.0.1] - 2026-01-28
+
+### Fixed
+- Fixed rate limiting issue in global search function
+- Improved search debouncing from 250ms to 500ms to reduce API calls
+- Removed automatic search triggers on workspace events to prevent unnecessary API requests
+- Added parameter validation to prevent duplicate API calls with same search parameters
+
 ## [1.0.0] - 2026-01-27
 
 ### Added

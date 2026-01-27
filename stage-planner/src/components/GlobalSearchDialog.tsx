@@ -51,6 +51,7 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
   const [tag, setTag] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest')
   const [results, setResults] = useState<{
     planning: PlanningResult[]
     notes: NoteResult[]
@@ -67,6 +68,7 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
     setTag('')
     setDateFrom('')
     setDateTo('')
+    setSortOrder('newest')
     setResults(null)
   }, [open])
 
@@ -151,16 +153,20 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
 
       if (!cancelled)
         setResults({
-          planning: planningOut.sort((a, b) => (b.date + b.start).localeCompare(a.date + a.start)),
-          notes: notesOut.sort((a, b) => b.updatedAt - a.updatedAt),
-          files: filesOut.sort((a, b) => b.updatedAt - a.updatedAt),
+          planning: planningOut.sort((a, b) =>
+            sortOrder === 'newest'
+              ? (b.date + b.start).localeCompare(a.date + a.start)
+              : (a.date + a.start).localeCompare(b.date + b.start),
+          ),
+          notes: notesOut.sort((a, b) => (sortOrder === 'newest' ? b.updatedAt - a.updatedAt : a.updatedAt - b.updatedAt)),
+          files: filesOut.sort((a, b) => (sortOrder === 'newest' ? b.updatedAt - a.updatedAt : a.updatedAt - b.updatedAt)),
         })
     }, 250)
     return () => {
       cancelled = true
       clearTimeout(t)
     }
-  }, [open, qq, token, currentWorkspace?.id, refreshTick, status, priority, tag, dateFrom, dateTo])
+  }, [open, qq, token, currentWorkspace?.id, refreshTick, status, priority, tag, dateFrom, dateTo, sortOrder])
 
   function go(r: PlanningResult | NoteResult | FileResult) {
     onClose()
@@ -230,6 +236,16 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
               onChange={(e) => setDateTo(e.target.value)}
               InputLabelProps={{ shrink: true }}
             />
+            <TextField
+              select
+              label="Sortering"
+              size="small"
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value as 'newest' | 'oldest')}
+            >
+              <MenuItem value="newest">Nieuwste eerst</MenuItem>
+              <MenuItem value="oldest">Oudste eerst</MenuItem>
+            </TextField>
           </Box>
         </Box>
 

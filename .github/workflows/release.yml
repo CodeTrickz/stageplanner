@@ -1,0 +1,41 @@
+name: Release
+
+on:
+  workflow_dispatch:  # Allows manual triggering
+  push:
+    branches:
+      - main  # Trigger on push to main
+    tags:
+      - 'v*'  # Trigger on version tags
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required to create releases
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for standard-version
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run release
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: npm run release
+
+      - name: Push changes
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git push --follow-tags origin HEAD:${GITHUB_REF#refs/heads/}

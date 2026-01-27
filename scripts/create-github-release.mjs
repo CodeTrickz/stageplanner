@@ -24,7 +24,17 @@ function getVersion() {
 
 async function createRelease() {
   const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN
-  if (!token) throw new Error('GH_TOKEN is required to create a GitHub release')
+  if (!token) {
+    // eslint-disable-next-line no-console
+    console.warn('⚠️  GH_TOKEN or GITHUB_TOKEN not found. Skipping GitHub release creation.')
+    // eslint-disable-next-line no-console
+    console.warn('   Version bump and changelog generation completed successfully.')
+    // eslint-disable-next-line no-console
+    console.warn('   To create a GitHub release, set GH_TOKEN or GITHUB_TOKEN (Personal Access Token with repo scope).')
+    // eslint-disable-next-line no-console
+    console.warn('   In GitHub Actions, GITHUB_TOKEN is automatically available.')
+    return
+  }
 
   const repo = getRepoSlug()
   const version = getVersion()

@@ -281,31 +281,50 @@ function driver() {
 function readJson(): JsonState {
   const p = jsonPath()
   ensureDir(path.dirname(p))
-  if (!fs.existsSync(p)) {
-    const init: JsonState = {
-      groups: [],
-      users: [],
-      planning: [],
-      notes: [],
-      shares: [],
-      audit: [],
-      refreshTokens: [],
-      notifications: [],
-    }
-    fs.writeFileSync(p, JSON.stringify(init, null, 2), 'utf-8')
-    return init
+  const init: JsonState = {
+    groups: [],
+    users: [],
+    planning: [],
+    notes: [],
+    shares: [],
+    audit: [],
+    refreshTokens: [],
+    notifications: [],
   }
-  const parsed = JSON.parse(fs.readFileSync(p, 'utf-8')) as Partial<JsonState>
-  return {
-    groups: parsed.groups ?? [],
-    users: parsed.users ?? [],
-    planning: parsed.planning ?? [],
-    notes: parsed.notes ?? [],
-    shares: parsed.shares ?? [],
-    audit: parsed.audit ?? [],
-    refreshTokens: (parsed as any).refreshTokens ?? [],
-    notifications: (parsed as any).notifications ?? [],
-  } as JsonState
+  try {
+    const parsed = JSON.parse(fs.readFileSync(p, 'utf-8')) as Partial<JsonState>
+    return {
+      groups: parsed.groups ?? [],
+      users: parsed.users ?? [],
+      planning: parsed.planning ?? [],
+      notes: parsed.notes ?? [],
+      shares: parsed.shares ?? [],
+      audit: parsed.audit ?? [],
+      refreshTokens: (parsed as any).refreshTokens ?? [],
+      notifications: (parsed as any).notifications ?? [],
+    } as JsonState
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code
+    if (code !== 'ENOENT') throw err
+    try {
+      fs.writeFileSync(p, JSON.stringify(init, null, 2), { encoding: 'utf-8', flag: 'wx' })
+      return init
+    } catch (writeErr) {
+      const writeCode = (writeErr as NodeJS.ErrnoException).code
+      if (writeCode !== 'EEXIST') throw writeErr
+      const parsed = JSON.parse(fs.readFileSync(p, 'utf-8')) as Partial<JsonState>
+      return {
+        groups: parsed.groups ?? [],
+        users: parsed.users ?? [],
+        planning: parsed.planning ?? [],
+        notes: parsed.notes ?? [],
+        shares: parsed.shares ?? [],
+        audit: parsed.audit ?? [],
+        refreshTokens: (parsed as any).refreshTokens ?? [],
+        notifications: (parsed as any).notifications ?? [],
+      } as JsonState
+    }
+  }
 }
 
 function writeJson(s: JsonState) {

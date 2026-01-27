@@ -2365,7 +2365,6 @@ app.delete('/admin/audit', requireAuth, requireAdmin, (req, res) => {
 
 function readLastNdjson(filePath: string, limit: number) {
   try {
-    if (!fs.existsSync(filePath)) return []
     const raw = fs.readFileSync(filePath, 'utf-8')
     const lines = raw.split(/\r?\n/).filter(Boolean)
     const tail = lines.slice(Math.max(0, lines.length - limit))
@@ -2378,7 +2377,8 @@ function readLastNdjson(filePath: string, limit: number) {
         }
       })
       .reverse()
-  } catch {
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return []
     return []
   }
 }
@@ -2394,8 +2394,15 @@ app.get('/admin/errors', requireAuth, requireAdmin, (req, res) => {
   const safeLimit = Math.min(2000, Math.max(1, Math.floor(q.limit ?? 10)))
   const safeOffset = Math.max(0, Math.floor(q.offset ?? 0))
 
-  if (!fs.existsSync(ERROR_LOG_PATH)) return res.json({ errors: [], total: 0, limit: safeLimit, offset: safeOffset })
-  const raw = fs.readFileSync(ERROR_LOG_PATH, 'utf-8')
+  let raw = ''
+  try {
+    raw = fs.readFileSync(ERROR_LOG_PATH, 'utf-8')
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      return res.json({ errors: [], total: 0, limit: safeLimit, offset: safeOffset })
+    }
+    throw err
+  }
   const lines = raw.split(/\r?\n/).filter(Boolean)
   const total = lines.length
   // newest first
@@ -2424,15 +2431,18 @@ app.get('/admin/errors/download', requireAuth, requireAdmin, (req, res) => {
   }
   res.setHeader('content-type', 'application/x-ndjson; charset=utf-8')
   res.setHeader('content-disposition', `attachment; filename="backend-errors-${stamp}.ndjson"`)
-  if (!fs.existsSync(ERROR_LOG_PATH)) return res.send('')
-  return res.send(fs.readFileSync(ERROR_LOG_PATH, 'utf-8'))
+  try {
+    return res.send(fs.readFileSync(ERROR_LOG_PATH, 'utf-8'))
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return res.send('')
+    throw err
+  }
 })
 
 app.delete('/admin/errors', requireAuth, requireAdmin, (req, res) => {
   try {
-    if (fs.existsSync(ERROR_LOG_PATH)) {
-      fs.writeFileSync(ERROR_LOG_PATH, '', 'utf-8')
-    }
+    fs.mkdirSync(path.dirname(ERROR_LOG_PATH), { recursive: true })
+    fs.writeFileSync(ERROR_LOG_PATH, '', 'utf-8')
     audit(req, 'admin.errors.wipe', 'errors', 'backend', {})
     return res.json({ ok: true })
   } catch (err) {

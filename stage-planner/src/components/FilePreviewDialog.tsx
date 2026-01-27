@@ -2,15 +2,39 @@ import DownloadIcon from '@mui/icons-material/Download'
 import PsychologyIcon from '@mui/icons-material/Psychology'
 import { Alert, Box, Button, Dialog, DialogContent, DialogTitle, Stack, Typography, useMediaQuery, useTheme } from '@mui/material'
 import mammoth from 'mammoth'
+import ExcelJS from 'exceljs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import * as XLSX from 'xlsx'
 import type { StoredFile } from '../db/db'
 import { useObjectUrl } from '../hooks/useObjectUrl'
 import { fetchFileBlob, fileCategory, formatBytes } from '../utils/files'
 import Tesseract from 'tesseract.js'
 import { useSettings } from '../app/settings'
 import { useApiToken } from '../api/client'
-// pdfjs-dist v3.x
+const PDFJS_WORKER_VERSION = '4.8.69'
+
+function escapeHtml(value: unknown) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function worksheetToHtml(worksheet: ExcelJS.Worksheet) {
+  const rows: string[] = []
+  worksheet.eachRow({ includeEmpty: true }, (row) => {
+    const cells: string[] = []
+    row.eachCell({ includeEmpty: true }, (cell) => {
+      const text = cell.text ?? ''
+      cells.push(`<td>${escapeHtml(text)}</td>`)
+    })
+    rows.push(`<tr>${cells.join('')}</tr>`)
+  })
+  return `<table>${rows.join('')}</table>`
+}
+
+// pdfjs-dist v4.x
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
 import * as pdfjsLib from 'pdfjs-dist'
@@ -97,10 +121,10 @@ export function FilePreviewDialog({
         }
         if (cat === 'office-excel') {
           const buf = await activeBlob.arrayBuffer()
-          const wb = XLSX.read(buf, { type: 'array' })
-          const sheetName = wb.SheetNames[0]
-          const ws = sheetName ? wb.Sheets[sheetName] : undefined
-          const html = ws ? XLSX.utils.sheet_to_html(ws) : ''
+          const workbook = new ExcelJS.Workbook()
+          await workbook.xlsx.load(buf)
+          const worksheet = workbook.worksheets[0]
+          const html = worksheet ? worksheetToHtml(worksheet) : ''
           if (!cancelled) setXlsxHtml(html || '')
           return
         }
@@ -132,7 +156,7 @@ export function FilePreviewDialog({
         const buf = await activeBlob.arrayBuffer()
         // configure worker src for pdfjs
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ;(pdfjsLib as any).GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js`
+        ;(pdfjsLib as any).GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_WORKER_VERSION}/build/pdf.worker.min.mjs`
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const doc = await (pdfjsLib as any).getDocument({ data: buf }).promise
         let out = ''

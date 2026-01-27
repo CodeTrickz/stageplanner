@@ -6,7 +6,7 @@ import morgan from 'morgan'
 import bcrypt from 'bcryptjs'
 import { ZodError, z } from 'zod'
 import { getUser, getUserFromToken, requireAuth, signAccessToken } from './auth'
-import { db, type DbPlanningItem, type DbNote, type DbFile, type WorkspaceRole } from './db'
+import { db, type DbPlanningItem, type DbNote, type DbFile, type WorkspaceRole, type DbNotification } from './db'
 import { buildCacheKey, maybeHandleCachedResponse, storeCacheAndSend, invalidateWorkspaceCache } from './cache'
 import path from 'node:path'
 import crypto from 'node:crypto'
@@ -2748,6 +2748,29 @@ function runNotificationsJob() {
   const workspaceIds = new Set(result.created.map((n) => n.workspaceId))
   for (const workspaceId of workspaceIds) {
     broadcastWorkspace(workspaceId, 'notifications')
+  }
+  const byUser = new Map<string, DbNotification[]>()
+  for (const notif of result.created) {
+    const list = byUser.get(notif.userId) ?? []
+    list.push(notif)
+    byUser.set(notif.userId, list)
+  }
+  for (const [userId, notifications] of byUser.entries()) {
+    const user = db.findUserById(userId)
+    if (!user?.email) continue
+    const lines = notifications
+      .sort((a, b) => a.dueAt - b.dueAt)
+      .map((n) => `- ${n.title}: ${n.body}`)
+      .join('\n')
+    const subject =
+      notifications.length === 1 ? 'Deadline notificatie' : `Deadline notificaties (${notifications.length})`
+    const text = `Je hebt ${notifications.length} nieuwe deadline notificatie(s):\n\n${lines}\n`
+    sendMail({ to: user.email, subject, text }).catch((err) => {
+      if (process.env.NODE_ENV !== 'production') {
+        // eslint-disable-next-line no-console
+        console.error('[notifications] mail failed', err)
+      }
+    })
   }
   if (process.env.NODE_ENV !== 'production') {
     // eslint-disable-next-line no-console

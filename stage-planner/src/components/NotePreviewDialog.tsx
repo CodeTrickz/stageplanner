@@ -1,4 +1,5 @@
 import DownloadIcon from '@mui/icons-material/Download'
+import DOMPurify from 'dompurify'
 import { Alert, Box, Button, Dialog, DialogContent, DialogTitle, Divider, Stack, Typography, useMediaQuery, useTheme } from '@mui/material'
 import type { StoredFile } from '../db/db'
 import { fetchFileBlob } from '../utils/files'
@@ -29,6 +30,7 @@ export function NotePreviewDialog({
   const token = useApiToken()
   const theme = useTheme()
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
+  const safeNoteHtml = note?.body ? DOMPurify.sanitize(note.body) : '<p>(leeg)</p>'
 
   async function downloadRemote(file: StoredFile) {
     if (!token || !file.remoteId) return
@@ -69,8 +71,7 @@ export function NotePreviewDialog({
                 '& td, & th': { border: '1px solid', borderColor: 'divider', p: 0.75 },
                 '& ul[data-type="taskList"]': { listStyle: 'none', paddingLeft: 0 },
               }}
-              // Let op: dit rendert HTML. In deze stage-app is dat oké, maar in production wil je sanitizen.
-              dangerouslySetInnerHTML={{ __html: note.body || '<p>(leeg)</p>' }}
+              dangerouslySetInnerHTML={{ __html: safeNoteHtml }}
             />
 
             <Divider sx={{ my: 2 }} />

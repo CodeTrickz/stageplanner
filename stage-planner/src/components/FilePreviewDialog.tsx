@@ -2,6 +2,7 @@ import DownloadIcon from '@mui/icons-material/Download'
 import PsychologyIcon from '@mui/icons-material/Psychology'
 import { Alert, Box, Button, Dialog, DialogContent, DialogTitle, Stack, Typography, useMediaQuery, useTheme } from '@mui/material'
 import mammoth from 'mammoth'
+import DOMPurify from 'dompurify'
 import ExcelJS from 'exceljs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { StoredFile } from '../db/db'
@@ -74,6 +75,11 @@ export function FilePreviewDialog({
   const [xlsxHtml, setXlsxHtml] = useState<string | null>(null)
   const [ocrText, setOcrText] = useState<string | null>(null)
   const [ocrStatus, setOcrStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
+  const safeDocxHtml = useMemo(
+    () => (docxHtml ? DOMPurify.sanitize(docxHtml) : '<p>(leeg)</p>'),
+    [docxHtml],
+  )
+  const safeXlsxHtml = useMemo(() => (xlsxHtml ? DOMPurify.sanitize(xlsxHtml) : ''), [xlsxHtml])
 
   useEffect(() => {
     let cancelled = false
@@ -309,7 +315,7 @@ export function FilePreviewDialog({
                   '& table': { borderCollapse: 'collapse', width: '100%' },
                   '& td, & th': { border: '1px solid', borderColor: 'divider', p: 0.75 },
                 }}
-                dangerouslySetInnerHTML={{ __html: docxHtml || '<p>(leeg)</p>' }}
+                dangerouslySetInnerHTML={{ __html: safeDocxHtml }}
               />
             )}
           </Box>
@@ -326,7 +332,7 @@ export function FilePreviewDialog({
                   '& table': { borderCollapse: 'collapse', width: 'max-content', minWidth: '100%' },
                   '& td, & th': { border: '1px solid', borderColor: 'divider', p: 0.75, whiteSpace: 'nowrap' },
                 }}
-                dangerouslySetInnerHTML={{ __html: xlsxHtml }}
+                dangerouslySetInnerHTML={{ __html: safeXlsxHtml }}
               />
             ) : (
               <Alert severity="info">Geen sheet gevonden.</Alert>

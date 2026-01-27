@@ -38,6 +38,7 @@ import { useBackendHealth } from '../hooks/useBackendHealth'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { GlobalSearchDialog } from '../components/GlobalSearchDialog'
 import { WorkspaceSelector } from '../components/WorkspaceSelector'
+import { NotificationsMenu } from '../components/NotificationsMenu'
 
 const tabs = [
   { label: 'Dashboard', to: '/dashboard', icon: <DashboardIcon /> },
@@ -252,6 +253,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <SearchIcon />
             </IconButton>
           )}
+
+          {user && <NotificationsMenu />}
           
           {/* Logout/Login button */}
           {user ? (

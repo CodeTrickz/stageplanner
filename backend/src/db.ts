@@ -186,6 +186,20 @@ export type DbEntityLink = {
   createdAt: number
 }
 
+export type DbNotification = {
+  id: string
+  userId: string
+  workspaceId: string
+  type: 'deadline_overdue' | 'deadline_soon'
+  entityType: 'planning'
+  entityId: string
+  title: string
+  body: string
+  dueAt: number
+  createdAt: number
+  readAt: number | null
+}
+
 type JsonState = {
   groups: DbGroup[]
   users: DbUser[]
@@ -194,10 +208,19 @@ type JsonState = {
   shares: DbShare[]
   audit: DbAudit[]
   refreshTokens: DbRefreshToken[]
+  notifications: DbNotification[]
 }
 
 function now() {
   return Date.now()
+}
+
+function buildDueAtMs(date: string, end: string): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null
+  if (!/^\d{2}:\d{2}$/.test(end)) return null
+  const dt = new Date(`${date}T${end}:00`)
+  if (Number.isNaN(dt.getTime())) return null
+  return dt.getTime()
 }
 
 function uuid() {
@@ -229,7 +252,16 @@ function readJson(): JsonState {
   const p = jsonPath()
   ensureDir(path.dirname(p))
   if (!fs.existsSync(p)) {
-    const init: JsonState = { groups: [], users: [], planning: [], notes: [], shares: [], audit: [], refreshTokens: [] }
+    const init: JsonState = {
+      groups: [],
+      users: [],
+      planning: [],
+      notes: [],
+      shares: [],
+      audit: [],
+      refreshTokens: [],
+      notifications: [],
+    }
     fs.writeFileSync(p, JSON.stringify(init, null, 2), 'utf-8')
     return init
   }
@@ -242,6 +274,7 @@ function readJson(): JsonState {
     shares: parsed.shares ?? [],
     audit: parsed.audit ?? [],
     refreshTokens: (parsed as any).refreshTokens ?? [],
+    notifications: (parsed as any).notifications ?? [],
   } as JsonState
 }
 
@@ -333,6 +366,23 @@ function openSqlite() {
       FOREIGN KEY(group_id) REFERENCES groups(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_task_templates_group ON task_templates(group_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      workspace_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      due_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      read_at INTEGER,
+      FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_unique ON notifications(user_id, entity_type, entity_id, type);
+    CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at);
 
     CREATE TABLE IF NOT EXISTS shares (
       id TEXT PRIMARY KEY,
@@ -2070,6 +2120,216 @@ export const db = {
     const deletedCount = before - s.planning.length
     if (deletedCount > 0) writeJson(s)
     return { deletedCount }
+  },
+
+  listNotifications: (
+    userId: string,
+    workspaceId?: string,
+    limit = 50,
+  ): DbNotification[] => {
+    if (sqliteDb) {
+      const params: Array<string | number> = [userId]
+      let where = 'user_id = ?'
+      if (workspaceId) {
+        where += ' AND workspace_id = ?'
+        params.push(workspaceId)
+      }
+      params.push(limit)
+      return sqliteDb
+        .prepare(
+          `SELECT id, user_id as userId, workspace_id as workspaceId, type, entity_type as entityType, entity_id as entityId,
+                  title, body, due_at as dueAt, created_at as createdAt, read_at as readAt
+           FROM notifications
+           WHERE ${where}
+           ORDER BY created_at DESC
+           LIMIT ?`,
+        )
+        .all(...params) as DbNotification[]
+    }
+    const s = readJson()
+    return s.notifications
+      .filter((n) => n.userId === userId && (!workspaceId || n.workspaceId === workspaceId))
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, limit)
+  },
+
+  countUnreadNotifications: (userId: string, workspaceId?: string): number => {
+    if (sqliteDb) {
+      const params: Array<string | number> = [userId]
+      let where = 'user_id = ? AND read_at IS NULL'
+      if (workspaceId) {
+        where += ' AND workspace_id = ?'
+        params.push(workspaceId)
+      }
+      const row = sqliteDb
+        .prepare(`SELECT COUNT(*) as count FROM notifications WHERE ${where}`)
+        .get(...params) as { count: number } | undefined
+      return Number(row?.count || 0)
+    }
+    const s = readJson()
+    return s.notifications.filter((n) => n.userId === userId && !n.readAt && (!workspaceId || n.workspaceId === workspaceId))
+      .length
+  },
+
+  markNotificationsRead: (userId: string, ids: string[]): number => {
+    if (ids.length === 0) return 0
+    const t = now()
+    if (sqliteDb) {
+      const placeholders = ids.map(() => '?').join(',')
+      const info = sqliteDb
+        .prepare(
+          `UPDATE notifications
+           SET read_at = ?
+           WHERE user_id = ? AND id IN (${placeholders})`,
+        )
+        .run(t, userId, ...ids)
+      return info.changes
+    }
+    const s = readJson()
+    let changed = 0
+    s.notifications = s.notifications.map((n) => {
+      if (n.userId !== userId || !ids.includes(n.id)) return n
+      if (n.readAt) return n
+      changed += 1
+      return { ...n, readAt: t }
+    })
+    if (changed > 0) writeJson(s)
+    return changed
+  },
+
+  markNotificationsReadAll: (userId: string, workspaceId?: string): number => {
+    const t = now()
+    if (sqliteDb) {
+      const params: Array<string | number> = [t, userId]
+      let where = 'user_id = ?'
+      if (workspaceId) {
+        where += ' AND workspace_id = ?'
+        params.push(workspaceId)
+      }
+      const info = sqliteDb
+        .prepare(`UPDATE notifications SET read_at = ? WHERE ${where} AND read_at IS NULL`)
+        .run(...params)
+      return info.changes
+    }
+    const s = readJson()
+    let changed = 0
+    s.notifications = s.notifications.map((n) => {
+      if (n.userId !== userId) return n
+      if (workspaceId && n.workspaceId !== workspaceId) return n
+      if (n.readAt) return n
+      changed += 1
+      return { ...n, readAt: t }
+    })
+    if (changed > 0) writeJson(s)
+    return changed
+  },
+
+  createDeadlineNotifications: (input: {
+    nowMs: number
+    soonDays: number
+  }): { created: DbNotification[] } => {
+    const { nowMs, soonDays } = input
+    const soonThreshold = soonDays > 0 ? nowMs + soonDays * 24 * 60 * 60 * 1000 : nowMs
+    const maxDate = new Date(soonThreshold).toISOString().slice(0, 10)
+    const created: DbNotification[] = []
+
+    function buildNotification(
+      item: { id: string; userId: string; groupId: string | null; date: string; end: string; title: string },
+      type: DbNotification['type'],
+      dueAt: number,
+    ): DbNotification {
+      const workspaceId = item.groupId || item.userId
+      const title = type === 'deadline_overdue' ? 'Deadline overschreden' : 'Deadline nadert'
+      const body = `${item.title} (${item.date} ${item.end})`
+      return {
+        id: uuid(),
+        userId: item.userId,
+        workspaceId,
+        type,
+        entityType: 'planning',
+        entityId: item.id,
+        title,
+        body,
+        dueAt,
+        createdAt: nowMs,
+        readAt: null,
+      }
+    }
+
+    if (sqliteDb) {
+      const rows = sqliteDb
+        .prepare(
+          `SELECT id, user_id as userId, group_id as groupId, date, end, title, status
+           FROM planning_items
+           WHERE status != 'done' AND date <= ?`,
+        )
+        .all(maxDate) as Array<{
+        id: string
+        userId: string
+        groupId: string | null
+        date: string
+        end: string
+        title: string
+        status: string
+      }>
+
+      for (const item of rows) {
+        const dueAt = buildDueAtMs(item.date, item.end)
+        if (!dueAt) continue
+        const isOverdue = dueAt <= nowMs
+        const isSoon = !isOverdue && dueAt <= soonThreshold
+        if (!isOverdue && !isSoon) continue
+
+        const types: DbNotification['type'][] = isOverdue ? ['deadline_overdue'] : ['deadline_soon']
+        for (const type of types) {
+          const notif = buildNotification(item, type, dueAt)
+          const info = sqliteDb
+            .prepare(
+              `INSERT OR IGNORE INTO notifications
+               (id, user_id, workspace_id, type, entity_type, entity_id, title, body, due_at, created_at, read_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            )
+            .run(
+              notif.id,
+              notif.userId,
+              notif.workspaceId,
+              notif.type,
+              notif.entityType,
+              notif.entityId,
+              notif.title,
+              notif.body,
+              notif.dueAt,
+              notif.createdAt,
+              notif.readAt,
+            )
+          if (info.changes > 0) created.push(notif)
+        }
+      }
+      return { created }
+    }
+
+    const s = readJson()
+    const candidates = s.planning.filter((p) => p.status !== 'done' && p.date <= maxDate)
+    for (const item of candidates) {
+      const dueAt = buildDueAtMs(item.date, item.end)
+      if (!dueAt) continue
+      const isOverdue = dueAt <= nowMs
+      const isSoon = !isOverdue && dueAt <= soonThreshold
+      if (!isOverdue && !isSoon) continue
+
+      const types: DbNotification['type'][] = isOverdue ? ['deadline_overdue'] : ['deadline_soon']
+      for (const type of types) {
+        const exists = s.notifications.some(
+          (n) => n.userId === item.userId && n.entityType === 'planning' && n.entityId === item.id && n.type === type,
+        )
+        if (exists) continue
+        const notif = buildNotification(item, type, dueAt)
+        s.notifications.push(notif)
+        created.push(notif)
+      }
+    }
+    if (created.length > 0) writeJson(s)
+    return { created }
   },
 
   setEmailVerificationForEmail: (

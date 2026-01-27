@@ -211,6 +211,9 @@ function broadcastWorkspace(workspaceId: string, type: string) {
     }
   }
 }
+
+const notificationsSoonDays = Number(process.env.NOTIFICATIONS_SOON_DAYS ?? '1')
+const notificationsIntervalMs = Number(process.env.NOTIFICATIONS_JOB_INTERVAL_MS ?? String(60 * 60 * 1000))
 // If behind reverse proxy (nginx), set TRUST_PROXY=1 (or a number) so req.ip is correct.
 if (process.env.TRUST_PROXY) {
   const raw = process.env.TRUST_PROXY.trim()
@@ -853,6 +856,43 @@ app.get('/events', asyncHandler(async (req, res) => {
     clearInterval(keepAlive)
     sseClients.delete(client)
   })
+}))
+
+const notificationsListQuerySchema = z.object({
+  workspaceId: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+})
+
+const notificationsReadSchema = z
+  .object({
+    ids: z.array(z.string().min(1)).max(200).optional(),
+    workspaceId: z.string().optional(),
+  })
+  .refine((v) => (v.ids && v.ids.length > 0) || v.workspaceId, { message: 'missing_target' })
+
+app.get('/notifications', requireAuth, asyncHandler(async (req, res) => {
+  const u = getDbUserOr401(req, res)
+  if (!u) return
+  const { workspaceId, limit } = parseQuery(req, notificationsListQuerySchema)
+  if (workspaceId && !canViewInWorkspace(u.id, workspaceId)) {
+    return res.status(403).json({ error: 'insufficient_permissions' })
+  }
+  const items = db.listNotifications(u.id, workspaceId, limit ?? 50)
+  const unreadCount = db.countUnreadNotifications(u.id, workspaceId)
+  return res.json({ items, unreadCount })
+}))
+
+app.post('/notifications/read', requireAuth, asyncHandler(async (req, res) => {
+  const u = getDbUserOr401(req, res)
+  if (!u) return
+  const { ids, workspaceId } = parseBody(req, notificationsReadSchema)
+  if (workspaceId && !canViewInWorkspace(u.id, workspaceId)) {
+    return res.status(403).json({ error: 'insufficient_permissions' })
+  }
+  const updatedCount = ids && ids.length > 0
+    ? db.markNotificationsRead(u.id, ids)
+    : db.markNotificationsReadAll(u.id, workspaceId)
+  return res.json({ updatedCount })
 }))
 
 // Client-side settings changes: log to audit
@@ -2701,6 +2741,20 @@ app.use((err: any, req: express.Request, res: express.Response, _next: express.N
   })
 })
 
+function runNotificationsJob() {
+  const soonDays = Number.isFinite(notificationsSoonDays) ? Math.max(0, notificationsSoonDays) : 0
+  const result = db.createDeadlineNotifications({ nowMs: Date.now(), soonDays })
+  if (result.created.length === 0) return
+  const workspaceIds = new Set(result.created.map((n) => n.workspaceId))
+  for (const workspaceId of workspaceIds) {
+    broadcastWorkspace(workspaceId, 'notifications')
+  }
+  if (process.env.NODE_ENV !== 'production') {
+    // eslint-disable-next-line no-console
+    console.log(`[notifications] created ${result.created.length} notifications`)
+  }
+}
+
 // Validate required environment variables (only at runtime, not during build)
 const requiredEnvVars = ['JWT_SECRET']
 const missingVars: string[] = []
@@ -2719,6 +2773,10 @@ const port = Number(process.env.PORT || 3001)
 app.listen(port, () => {
   // eslint-disable-next-line no-console
   console.log(`Backend listening on http://localhost:${port}`)
+  if (Number.isFinite(notificationsIntervalMs) && notificationsIntervalMs > 0) {
+    runNotificationsJob()
+    setInterval(runNotificationsJob, notificationsIntervalMs)
+  }
 })
 
 

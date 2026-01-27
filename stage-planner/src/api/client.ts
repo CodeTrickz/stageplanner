@@ -60,11 +60,16 @@ export async function apiFetch(path: string, options: RequestInit & { token?: st
     if (!res.ok) {
       if (res.status === 429) {
         const retryAfterHeader = Number(res.headers.get('retry-after'))
-        const retryAfterSec = Number.isFinite(retryAfterHeader) ? retryAfterHeader : Number(data?.retryAfter || 0)
-        const message =
-          data?.message ||
-          `Je doet te veel verzoeken. Probeer het over ${retryAfterSec || 1} seconden opnieuw.`
-        emitRateLimit({ retryAfterSec: retryAfterSec || 1, message })
+        const retryAfterSec = Number.isFinite(retryAfterHeader)
+          ? retryAfterHeader
+          : Number.isFinite(Number(data?.retryAfter))
+            ? Number(data?.retryAfter)
+            : 1
+        const message = `Te veel verzoeken. Probeer opnieuw over ${retryAfterSec} seconden.`
+        emitRateLimit({ retryAfterSec, message })
+        status.lastErrorAt = Date.now()
+        emit()
+        return null
       }
       status.lastErrorAt = Date.now()
       emit()

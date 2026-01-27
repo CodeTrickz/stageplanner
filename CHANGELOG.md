@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- No changes yet.
+
+## [1.0.0] - 2026-01-27
+
 ### Added
 - Workspace-scoped sync for planning, notes, and files
 - Realtime push layer via SSE (`/events`)
@@ -12,9 +16,15 @@
 - Server-side cache with ETag/If-None-Match for planning, notes, and files
 - Cache smoke test script (`testscripts/cache-smoke.sh`)
 - Bulk actions for planning items (multi-select + status/priority/tags update)
+- Bulk delete for planning and tasks overview
 - Stage report export (PDF/CSV) from the dashboard
 - Workspace roles (owner/editor/commenter/viewer) with permission checks
 - Workspace task templates (apply to a week + manage in planning)
+- Template fields for priority/status + stage day tagging
+- Deadline notifications (in-app) with optional email delivery
+- Global search across planning, notes, and files with filters and sort order
+- Rate-limit UX toast with retry-after messaging
+- Client error log viewer + detail dialog in settings
 
 ### Changed
 - Files are stored server-side (SQLite BLOBs)

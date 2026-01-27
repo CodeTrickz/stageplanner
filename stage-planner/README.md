@@ -3,15 +3,15 @@
 Frontend for Stage Planner with workspace‑scoped data and realtime updates, with multiple tabs:
 
 - **Dashboard**: overview of today/week/tasks + internship progress.
-- **Planning**: day planning with time slots (create/edit/delete items + bulk updates).
+- **Planning**: day planning with time slots (create/edit/delete items + bulk updates + delete).
 - **Templates**: reusable task templates per workspace (manage + apply to a week).
 - **Week**: week view (7 days).
-- **Tasks**: task overview with filters.
+- **Tasks**: task overview with filters + bulk updates + delete.
 - **Files**: upload + download (stored on the server in SQLite).
 - **Notes / mail**: text + attachments (pick from Files), save, export as **.txt** or **.zip**.
 - **Team**: workspaces and member management.
 - **Workspace roles**: owner/editor/commenter/viewer with permission checks.
-- **Settings**: user settings (planning, internship period, holidays, theme).
+- **Settings**: user settings (planning, internship period, holidays, theme, notifications).
 - **Stage report**: export internship progress to PDF/CSV with totals and weekly breakdown.
 - **Admin**: management and logs (admin only).
 
@@ -51,6 +51,13 @@ Optional `stage-planner/.env.local`:
 
 Planning, notes, and files are stored server‑side (SQLite) and synchronized per workspace.
 Local storage is only used for UI settings and auth state.
+
+## Highlights
+
+- Global search with filters (status, priority, tag, date range) and sort order
+- Deadline notifications (in-app + optional email)
+- Rate-limit friendly toast messages
+- Client error log viewer with detail dialog
 
 ## Tech
 

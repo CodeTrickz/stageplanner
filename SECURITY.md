@@ -4,17 +4,17 @@
 
 We provide security updates for the latest stable version of Stage Planner.
 
-| Version  | Supported |
-| -------- | --------- |
-| Latest   | ✅        |
-| < Latest | ❌        |
+| Version | Supported |
+| ------- | --------- |
+| 1.0.0   | ✅        |
+| < 1.0.0 | ❌        |
 
 ## Reporting a Vulnerability
 
 If you find a security vulnerability, **do NOT open a public issue**. Instead:
 
 1. **Email**: contact the maintainers (add an email if available)
-2. **GitHub Security Advisory**: use [GitHub's private vulnerability reporting](https://github.com/CodeTrickz/stageplanner/security/advisories/new) if available
+2. **GitHub Security Advisory**: use [GitHub's private vulnerability reporting](https://github.com/CodeTrickz/stageplanner/security/advisories/new)
 
 ### What to include
 

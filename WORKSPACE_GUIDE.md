@@ -1,8 +1,8 @@
-# Workspace/Team User Guide
+# Workspace and Team Guide
 
 ## What are Workspaces?
 
-A Workspace is a group where you collaborate with others (mentors, supervisors) on your internship. Each user automatically has a personal workspace.
+A workspace is a group where you collaborate with others on planning, notes, and files. Each user automatically has a personal workspace.
 
 ## How to use Workspaces
 
@@ -15,7 +15,7 @@ After logging in you will see a **Workspace selector**:
 
 It shows:
 - The name of your current workspace
-- Your role (Student, Mentor, or Supervisor)
+- Your role (Owner, Editor, Commenter, or Viewer)
 
 Click the workspace selector to switch between workspaces.
 
@@ -23,39 +23,39 @@ Click the workspace selector to switch between workspaces.
 
 Go to the **Team** page in the menu to:
 - View all team members
-- Invite new members (if you are a Student)
-- Update roles (if you are a Student)
-- Remove members (if you are a Student)
+- Invite new members (if you are an Owner)
+- Update roles (if you are an Owner)
+- Remove members (if you are an Owner)
 
 ### 3. Inviting members
 
-If you are a **Student** in a workspace:
+If you are an **Owner** in a workspace:
 1. Go to the **Team** page
 2. Click **Invite**
 3. Enter the email address of the person you want to invite
-4. Choose the role: **Mentor** or **Supervisor**
+4. Choose the role: **Editor**, **Commenter**, or **Viewer**
 5. Click **Invite**
 
 The invited person receives an email with a link to accept the invitation.
 
 ### 4. Roles and permissions
 
-**STUDENT:**
-- ✅ Can create/edit/delete planning items
-- ✅ Can create/edit/delete notes
-- ✅ Can invite team members
-- ✅ Can change roles
-- ✅ Can remove members
+**OWNER:**
+- ✅ Full access to workspace data
+- ✅ Can manage members and roles
 
-**MENTOR:**
-- ✅ Can read planning items and notes
+**EDITOR:**
+- ✅ Can create/edit/delete planning items, notes, and files
+- ❌ Cannot manage members
+
+**COMMENTER:**
+- ✅ Can view planning items, notes, and files
 - ✅ Can add feedback/comments
 - ❌ Cannot create or delete items
 
-**SUPERVISOR:**
-- ✅ Can read planning items and notes
-- ✅ Can add feedback/comments
-- ❌ Cannot create or delete items
+**VIEWER:**
+- ✅ Read-only access to workspace data
+- ❌ Cannot comment or edit
 
 ### 5. Planning and notes
 
@@ -83,8 +83,8 @@ This means you do not have a workspace yet. Every user should automatically have
 
 1. Ensure you selected a workspace
 2. Go to the **Team** page
-3. If you are a Student, you should see all members
+3. If you are an Owner, you should see all members
 
 ### I can't invite members
 
-Only **Student** roles can invite members. Check your role in the workspace selector.
+Only **Owner** roles can invite members. Check your role in the workspace selector.

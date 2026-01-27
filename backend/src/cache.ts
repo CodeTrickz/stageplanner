@@ -82,13 +82,7 @@ export function maybeHandleCachedResponse(req: express.Request, res: express.Res
   return true
 }
 
-export function storeCacheAndSend(
-  req: express.Request,
-  res: express.Response,
-  key: string,
-  workspaceId: string,
-  payload: unknown,
-) {
+export function storeCacheAndSend(res: express.Response, key: string, workspaceId: string, payload: unknown) {
   const body = JSON.stringify(payload)
   const etag = createEtag(body)
   const entry: CacheEntry = {

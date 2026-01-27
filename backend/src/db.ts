@@ -3287,7 +3287,7 @@ export const db = {
   },
 
   // Workspace member management
-  updateWorkspaceMemberRole: (workspaceId: string, userId: string, newRole: WorkspaceRole, updatedBy: string): boolean => {
+  updateWorkspaceMemberRole: (workspaceId: string, userId: string, newRole: WorkspaceRole): boolean => {
     if (sqliteDb) {
       // Permission already enforced in API middleware (requireWorkspaceStudent)
 

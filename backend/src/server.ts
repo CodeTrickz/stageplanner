@@ -7,14 +7,14 @@ import morgan from 'morgan'
 import bcrypt from 'bcryptjs'
 import { ZodError, z } from 'zod'
 import { getUser, getUserFromToken, requireAuth, signAccessToken } from './auth'
-import { db, type DbPlanningItem, type DbNote, type DbFile, type WorkspaceRole, type DbNotification } from './db'
+import { db, type DbPlanningItem, type DbNote, type WorkspaceRole, type DbNotification } from './db'
 import { buildCacheKey, maybeHandleCachedResponse, storeCacheAndSend, invalidateWorkspaceCache } from './cache'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { sendMail } from './mail'
 import fs from 'node:fs'
 import { Registry, Counter, Histogram, collectDefaultMetrics } from 'prom-client'
-import { FORMAT_HTTP_HEADERS, Span, SpanContext } from 'opentracing'
+import { FORMAT_HTTP_HEADERS, SpanContext } from 'opentracing'
 import { stringify } from 'csv-stringify'
 import { buildStageReportData } from './stage-report'
 
@@ -260,7 +260,7 @@ app.use(
   }),
 )
 // Extra security headers
-app.use((req, res, next) => {
+app.use((_req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff')
   res.setHeader('X-Frame-Options', 'DENY')
   res.setHeader('X-XSS-Protection', '1; mode=block')
@@ -482,17 +482,6 @@ function requireWorkspaceOwner(req: express.Request, res: express.Response, next
   return requireWorkspaceRole(['OWNER'])(req, res, next)
 }
 
-function requireWorkspaceView(req: express.Request, res: express.Response, next: express.NextFunction) {
-  return requireWorkspaceRole(VIEW_ROLES)(req, res, next)
-}
-
-function requireWorkspaceComment(req: express.Request, res: express.Response, next: express.NextFunction) {
-  return requireWorkspaceRole(COMMENT_ROLES)(req, res, next)
-}
-
-function requireWorkspaceEdit(req: express.Request, res: express.Response, next: express.NextFunction) {
-  return requireWorkspaceRole(EDIT_ROLES)(req, res, next)
-}
 
 function canCreateInWorkspace(userId: string, workspaceId: string): boolean {
   const role = getWorkspaceRole(userId, workspaceId)
@@ -1128,7 +1117,7 @@ app.get('/files', requireAuth, asyncHandler(async (req, res) => {
       createdAt: f.createdAt,
       updatedAt: f.updatedAt,
     }))
-    return storeCacheAndSend(req, res, cacheKey, workspaceId, { files: filesWithoutData, workspaceId })
+    return storeCacheAndSend(res, cacheKey, workspaceId, { files: filesWithoutData, workspaceId })
   }
 
   // Legacy: list all files for user
@@ -1424,7 +1413,7 @@ app.get('/notes', requireAuth, asyncHandler(async (req, res) => {
     if (maybeHandleCachedResponse(req, res, cacheKey)) return
 
     const notes = db.listNotesForGroup(workspaceId)
-    return storeCacheAndSend(req, res, cacheKey, workspaceId, { notes, workspaceId })
+    return storeCacheAndSend(res, cacheKey, workspaceId, { notes, workspaceId })
   }
 
   // Legacy: list all workspaces user is member of
@@ -1787,7 +1776,7 @@ app.get('/planning', requireAuth, asyncHandler(async (req, res) => {
     if (maybeHandleCachedResponse(req, res, cacheKey)) return
 
     const items = db.listPlanningForGroup(workspaceId, date)
-    return storeCacheAndSend(req, res, cacheKey, workspaceId, { items, workspaceId })
+    return storeCacheAndSend(res, cacheKey, workspaceId, { items, workspaceId })
   }
 
   // Legacy: list all workspaces user is member of
@@ -2524,7 +2513,6 @@ const updateWorkspaceSchema = z.object({
 })
 
 app.patch('/workspaces/:id', requireAuth, requireWorkspaceOwner, (req, res) => {
-  const u = getUser(req)!
   const workspaceId = req.params.id
   const parsed = updateWorkspaceSchema.safeParse(req.body)
   if (!parsed.success) return res.status(400).json({ error: 'invalid_input' })
@@ -2572,7 +2560,6 @@ app.post('/workspaces/:id/invite', requireAuth, requireWorkspaceOwner, asyncHand
   })
 
   const workspace = db.getGroupById(workspaceId)!
-  const { appVerifyUrl, apiVerifyUrl } = buildVerifyUrls(rawToken)
   const inviteUrl = `${getPublicAppUrl()}/workspace/accept?token=${encodeURIComponent(rawToken)}`
 
   await sendMail({
@@ -2652,7 +2639,7 @@ app.patch('/workspaces/:id/members', requireAuth, requireWorkspaceOwner, (req, r
     if (ownerCount <= 1) return res.status(400).json({ error: 'last_owner' })
   }
 
-  const updated = db.updateWorkspaceMemberRole(workspaceId, userId, role, u.id)
+  const updated = db.updateWorkspaceMemberRole(workspaceId, userId, role)
   if (!updated) return res.status(404).json({ error: 'member_not_found' })
 
   audit(req, 'workspace.update_member_role', 'workspace', workspaceId, { userId, role })

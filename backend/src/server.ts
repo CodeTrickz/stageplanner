@@ -282,7 +282,16 @@ app.use(
   }),
 )
 app.use(express.json({ limit: '2mb' }))
-app.use(morgan('dev'))
+app.use(
+  morgan((tokens, req, res) => {
+    const method = tokens.method(req, res)
+    const status = tokens.status(req, res)
+    const length = tokens.res(req, res, 'content-length') || '-'
+    const time = tokens['response-time'](req, res)
+    // Use req.path to avoid logging query strings (tokens may contain secrets).
+    return `${method} ${req.path} ${status} ${length} - ${time} ms`
+  }),
+)
 
 // Jaeger tracing middleware
 app.use((req, res, next) => {
@@ -572,7 +581,7 @@ function getDbUserOr401(req: express.Request, res: express.Response) {
       emailVerified: true,
     })
     // eslint-disable-next-line no-console
-    console.log(`Seeded admin user: ${email} / ${password}`)
+    console.log(`Seeded admin user: ${email}`)
   } else {
     // Ensure existing admin user has correct properties
     db.updateUser(adminUser.id, {

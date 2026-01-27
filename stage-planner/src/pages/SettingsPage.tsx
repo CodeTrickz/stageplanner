@@ -1,4 +1,18 @@
-import { Alert, Box, Button, FormControlLabel, MenuItem, Paper, Stack, Switch, TextField, Typography } from '@mui/material'
+import {
+  Alert,
+  Box,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  FormControlLabel,
+  MenuItem,
+  Paper,
+  Stack,
+  Switch,
+  TextField,
+  Typography,
+} from '@mui/material'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { apiFetch } from '../api/client'
 import { useSettings, type StartPage } from '../app/settings'
@@ -163,6 +177,7 @@ export function SettingsPage() {
   const [pwErr, setPwErr] = useState<string | null>(null)
   const [errorLogs, setErrorLogs] = useState<AppErrorLog[]>([])
   const [errorLogsLoading, setErrorLogsLoading] = useState(false)
+  const [errorDetail, setErrorDetail] = useState<AppErrorLog | null>(null)
 
 
 
@@ -495,7 +510,11 @@ export function SettingsPage() {
           {errorLoggingEnabled && errorLogs.length > 0 && (
             <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, maxHeight: 240, overflow: 'auto', p: 1 }}>
               {errorLogs.map((entry) => (
-                <Box key={entry.id} sx={{ py: 0.5, borderBottom: '1px dashed', borderColor: 'divider' }}>
+                <Box
+                  key={entry.id}
+                  sx={{ py: 0.5, borderBottom: '1px dashed', borderColor: 'divider', cursor: 'pointer' }}
+                  onClick={() => setErrorDetail(entry)}
+                >
                   <Typography variant="body2" sx={{ fontWeight: 700 }}>
                     {entry.source} • {new Date(entry.createdAt).toLocaleString()}
                   </Typography>
@@ -513,6 +532,38 @@ export function SettingsPage() {
           )}
         </Stack>
       </Paper>
+
+      <Dialog open={!!errorDetail} onClose={() => setErrorDetail(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Foutdetail</DialogTitle>
+        <DialogContent dividers>
+          {errorDetail && (
+            <Stack spacing={1}>
+              <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                {errorDetail.source} • {new Date(errorDetail.createdAt).toLocaleString()}
+              </Typography>
+              <Typography variant="body2">{errorDetail.message}</Typography>
+              {errorDetail.stack && (
+                <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    Stacktrace
+                  </Typography>
+                  <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>
+                    {errorDetail.stack}
+                  </Typography>
+                </Box>
+              )}
+              <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Meta
+                </Typography>
+                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>
+                  {errorDetail.metaJson}
+                </Typography>
+              </Box>
+            </Stack>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Paper sx={{ p: 2 }}>
         <Stack spacing={2}>

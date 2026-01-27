@@ -5,6 +5,7 @@ import { useSettings, type StartPage } from '../app/settings'
 import { useAuth } from '../auth/auth'
 import { WorkspaceSelector } from '../components/WorkspaceSelector'
 import { useWorkspace } from '../hooks/useWorkspace'
+import { db, type AppErrorLog } from '../db/db'
 
 export function SettingsPage() {
   const { currentWorkspace } = useWorkspace()
@@ -160,6 +161,8 @@ export function SettingsPage() {
   const [pw, setPw] = useState({ current: '', next: '', next2: '' })
   const [pwMsg, setPwMsg] = useState<string | null>(null)
   const [pwErr, setPwErr] = useState<string | null>(null)
+  const [errorLogs, setErrorLogs] = useState<AppErrorLog[]>([])
+  const [errorLogsLoading, setErrorLogsLoading] = useState(false)
 
 
 
@@ -171,6 +174,36 @@ export function SettingsPage() {
       notifyDeadlineEmail: user?.notifyDeadlineEmail ?? true,
     })
   }, [user?.username, user?.firstName, user?.lastName, user?.notifyDeadlineEmail])
+
+  async function refreshErrorLogs() {
+    if (!errorLoggingEnabled) {
+      setErrorLogs([])
+      return
+    }
+    setErrorLogsLoading(true)
+    try {
+      const items = await db.errors.orderBy('createdAt').reverse().limit(50).toArray()
+      setErrorLogs(items)
+    } catch {
+      setErrorLogs([])
+    } finally {
+      setErrorLogsLoading(false)
+    }
+  }
+
+  async function clearErrorLogs() {
+    try {
+      await db.errors.clear()
+      setErrorLogs([])
+    } catch {
+      // ignore
+    }
+  }
+
+  useEffect(() => {
+    void refreshErrorLogs()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [errorLoggingEnabled])
 
   async function refreshMe() {
     if (!token) return
@@ -446,6 +479,38 @@ export function SettingsPage() {
               disabled={!errorLoggingEnabled}
             />
           </Stack>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }} justifyContent="space-between">
+            <Typography variant="body2" color="text.secondary">
+              Laatste fouten (max 50)
+            </Typography>
+            <Stack direction="row" spacing={1}>
+              <Button variant="outlined" size="small" onClick={() => void refreshErrorLogs()} disabled={!errorLoggingEnabled || errorLogsLoading}>
+                Refresh
+              </Button>
+              <Button variant="outlined" size="small" color="error" onClick={() => void clearErrorLogs()} disabled={!errorLoggingEnabled}>
+                Wis logs
+              </Button>
+            </Stack>
+          </Stack>
+          {errorLoggingEnabled && errorLogs.length > 0 && (
+            <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, maxHeight: 240, overflow: 'auto', p: 1 }}>
+              {errorLogs.map((entry) => (
+                <Box key={entry.id} sx={{ py: 0.5, borderBottom: '1px dashed', borderColor: 'divider' }}>
+                  <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                    {entry.source} • {new Date(entry.createdAt).toLocaleString()}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {entry.message}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
+          )}
+          {errorLoggingEnabled && !errorLogsLoading && errorLogs.length === 0 && (
+            <Typography variant="body2" color="text.secondary">
+              Geen fouten gelogd.
+            </Typography>
+          )}
         </Stack>
       </Paper>
 

@@ -1702,6 +1702,17 @@ const planningListQuerySchema = z.object({
   workspaceId: z.string().optional(),
 })
 
+const searchQuerySchema = z.object({
+  workspaceId: z.string().min(1),
+  q: z.string().optional(),
+  status: z.enum(['todo', 'in_progress', 'done']).optional(),
+  priority: z.enum(['low', 'medium', 'high']).optional(),
+  tag: z.string().max(64).optional(),
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+})
+
 app.get('/planning', requireAuth, asyncHandler(async (req, res) => {
   const u = getDbUserOr401(req, res)
   if (!u) return
@@ -1732,6 +1743,30 @@ app.get('/planning', requireAuth, asyncHandler(async (req, res) => {
   allItems.push(...personalItems)
 
   return res.json({ items: allItems })
+}))
+
+app.get('/search', requireAuth, asyncHandler(async (req, res) => {
+  const u = getDbUserOr401(req, res)
+  if (!u) return
+  const { workspaceId, q, status, priority, tag, from, to, limit } = parseQuery(req, searchQuerySchema)
+  if (!canViewInWorkspace(u.id, workspaceId)) {
+    return res.status(403).json({ error: 'insufficient_permissions' })
+  }
+  const trimmedQ = (q ?? '').trim()
+  if (!trimmedQ && !status && !priority && !tag && !from && !to) {
+    return res.json({ planning: [], notes: [], files: [] })
+  }
+  const result = db.searchWorkspace({
+    workspaceId,
+    q: trimmedQ,
+    status,
+    priority,
+    tag,
+    from,
+    to,
+    limit: limit ?? 30,
+  })
+  return res.json(result)
 }))
 
 // Planning CRUD schema (defined here for use below)

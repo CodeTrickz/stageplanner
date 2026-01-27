@@ -8,6 +8,7 @@ import {
   List,
   ListItemButton,
   ListItemText,
+  MenuItem,
   TextField,
   Typography,
   useMediaQuery,
@@ -46,6 +47,11 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
     }
   })
   const [q, setQ] = useState('')
+  const [status, setStatus] = useState<'' | 'todo' | 'in_progress' | 'done'>('')
+  const [priority, setPriority] = useState<'' | 'low' | 'medium' | 'high'>('')
+  const [tag, setTag] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [results, setResults] = useState<Result[] | null>(null)
 
   const qq = useMemo(() => q.trim().toLowerCase(), [q])
@@ -53,6 +59,11 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
   useEffect(() => {
     if (!open) return
     setQ('')
+    setStatus('')
+    setPriority('')
+    setTag('')
+    setDateFrom('')
+    setDateTo('')
     setResults(null)
   }, [open])
 
@@ -60,7 +71,7 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
     if (!open) return
     let cancelled = false
     const t = setTimeout(async () => {
-      if (!qq) {
+      if (!qq && !status && !priority && !tag && !dateFrom && !dateTo) {
         setResults([])
         return
       }
@@ -70,72 +81,57 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
       }
       const out: Result[] = []
       const workspaceId = String(currentWorkspace.id)
-      const [planningRes, notesRes, filesRes, metaRes] = await Promise.all([
-        apiFetch(`/planning?workspaceId=${encodeURIComponent(workspaceId)}`, { token: token || undefined }),
-        apiFetch(`/notes?workspaceId=${encodeURIComponent(workspaceId)}`, { token: token || undefined }),
-        apiFetch(`/files?workspaceId=${encodeURIComponent(workspaceId)}`, { token: token || undefined }),
-        apiFetch(`/file-meta?workspaceId=${encodeURIComponent(workspaceId)}`, { token: token || undefined }),
-      ])
-      const planning = (planningRes.items || []) as Array<{
-        id: string
-        date: string
-        start: string
-        end: string
-        title: string
-        notes?: string | null
-        tagsJson?: string
-      }>
-      for (const it of planning) {
-        const tags = (() => {
-          try {
-            return (JSON.parse(it.tagsJson || '[]') as string[]).join(' ')
-          } catch {
-            return ''
-          }
-        })()
-        const hay = `${it.title} ${it.notes ?? ''} ${it.date} ${it.start}-${it.end} ${tags}`.toLowerCase()
-        if (hay.includes(qq) && it.id) {
+      const params = new URLSearchParams({ workspaceId })
+      if (qq) params.set('q', qq)
+      if (status) params.set('status', status)
+      if (priority) params.set('priority', priority)
+      if (tag.trim()) params.set('tag', tag.trim())
+      if (dateFrom) params.set('from', dateFrom)
+      if (dateTo) params.set('to', dateTo)
+      try {
+        const res = await apiFetch(`/search?${params.toString()}`, { token: token || undefined })
+
+        const planning = (res.planning || []) as Array<{
+          id: string
+          date: string
+          start: string
+          end: string
+          title: string
+          status: string
+          priority: string
+        }>
+        for (const it of planning) {
           out.push({
             kind: 'planning',
             id: it.id,
             date: it.date,
             primary: it.title,
-            secondary: `${it.date} ${it.start}-${it.end}`,
+            secondary: `${it.date} ${it.start}-${it.end} • ${it.status}/${it.priority}`,
           })
         }
-      }
-      const notes = (notesRes.notes || []) as Array<{ id: string; subject: string; body: string; updatedAt: number }>
-      for (const n of notes) {
-        const bodyTxt = stripHtml(n.body || '')
-        const hay = `${n.subject} ${bodyTxt}`.toLowerCase()
-        if (hay.includes(qq) && n.id) {
+
+        const notes = (res.notes || []) as Array<{ id: string; subject: string; body: string; updatedAt: number }>
+        for (const n of notes) {
+          const bodyTxt = stripHtml(n.body || '')
           out.push({
             kind: 'note',
             id: n.id,
             primary: n.subject?.trim() ? n.subject : '(zonder onderwerp)',
-            secondary: new Date(n.updatedAt).toLocaleString(),
+            secondary: `${new Date(n.updatedAt).toLocaleString()} • ${bodyTxt.slice(0, 60)}`,
           })
         }
-      }
-      // files by group
-      const files = (filesRes.files || []) as Array<{ groupKey: string; name: string; type: string }>
-      const metas = (metaRes.items || []) as Array<{ groupKey: string; folder: string; labelsJson?: string }>
-      const metaByKey = new Map(metas.map((m) => [m.groupKey, m] as const))
-      const seen = new Set<string>()
-      for (const f of files) {
-        if (seen.has(f.groupKey)) continue
-        seen.add(f.groupKey)
-        const meta = metaByKey.get(f.groupKey)
-        const labels = meta ? (JSON.parse(meta.labelsJson || '[]') as string[]).join(' ') : ''
-        const hay = `${f.name} ${f.type} ${meta?.folder || ''} ${labels}`.toLowerCase()
-        if (hay.includes(qq)) {
+
+        const files = (res.files || []) as Array<{ groupKey: string; name: string; type: string; folder?: string | null }>
+        for (const f of files) {
           out.push({
             kind: 'file',
             groupKey: f.groupKey,
             primary: f.name,
-            secondary: meta?.folder ? `Folder: ${meta.folder}` : f.type,
+            secondary: f.folder ? `Folder: ${f.folder}` : f.type,
           })
         }
+      } catch {
+        // ignore
       }
 
       if (!cancelled) setResults(out.slice(0, 30))
@@ -144,7 +140,7 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
       cancelled = true
       clearTimeout(t)
     }
-  }, [open, qq, token, currentWorkspace?.id, refreshTick])
+  }, [open, qq, token, currentWorkspace?.id, refreshTick, status, priority, tag, dateFrom, dateTo])
 
   function go(r: Result) {
     onClose()
@@ -168,6 +164,54 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
           size="small"
           InputProps={{ startAdornment: <SearchIcon sx={{ mr: { xs: 0.5, sm: 1 }, fontSize: { xs: '1rem', sm: '1.25rem' } }} /> }}
         />
+
+        <Box sx={{ display: 'grid', gap: 1, mt: { xs: 1.5, sm: 2 } }}>
+          <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' } }}>
+            <TextField
+              select
+              label="Status"
+              size="small"
+              value={status}
+              onChange={(e) => setStatus(e.target.value as '' | 'todo' | 'in_progress' | 'done')}
+            >
+              <MenuItem value="">Alle</MenuItem>
+              <MenuItem value="todo">Todo</MenuItem>
+              <MenuItem value="in_progress">In progress</MenuItem>
+              <MenuItem value="done">Done</MenuItem>
+            </TextField>
+            <TextField
+              select
+              label="Prioriteit"
+              size="small"
+              value={priority}
+              onChange={(e) => setPriority(e.target.value as '' | 'low' | 'medium' | 'high')}
+            >
+              <MenuItem value="">Alle</MenuItem>
+              <MenuItem value="low">Low</MenuItem>
+              <MenuItem value="medium">Medium</MenuItem>
+              <MenuItem value="high">High</MenuItem>
+            </TextField>
+            <TextField label="Tag" size="small" value={tag} onChange={(e) => setTag(e.target.value)} />
+            <TextField
+              label="Vanaf"
+              type="date"
+              size="small"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+          </Box>
+          <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' } }}>
+            <TextField
+              label="Tot"
+              type="date"
+              size="small"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+          </Box>
+        </Box>
 
         <Box sx={{ mt: { xs: 1.5, sm: 2 } }}>
           {results == null ? (

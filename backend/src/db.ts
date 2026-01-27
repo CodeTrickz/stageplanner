@@ -201,6 +201,34 @@ export type DbNotification = {
   readAt: number | null
 }
 
+export type DbSearchPlanning = {
+  id: string
+  date: string
+  start: string
+  end: string
+  title: string
+  notes: string | null
+  status: DbPlanningItem['status']
+  priority: DbPlanningItem['priority']
+  tagsJson: string
+}
+
+export type DbSearchNote = {
+  id: string
+  subject: string
+  body: string
+  updatedAt: number
+}
+
+export type DbSearchFile = {
+  groupKey: string
+  name: string
+  type: string
+  folder: string | null
+  labelsJson: string | null
+  updatedAt: number
+}
+
 type JsonState = {
   groups: DbGroup[]
   users: DbUser[]
@@ -2347,6 +2375,162 @@ export const db = {
     }
     if (created.length > 0) writeJson(s)
     return { created }
+  },
+
+  searchWorkspace: (input: {
+    workspaceId: string
+    q?: string
+    status?: DbPlanningItem['status']
+    priority?: DbPlanningItem['priority']
+    tag?: string
+    from?: string
+    to?: string
+    limit?: number
+  }): { planning: DbSearchPlanning[]; notes: DbSearchNote[]; files: DbSearchFile[] } => {
+    const q = (input.q ?? '').trim()
+    const limit = input.limit ?? 30
+    const tag = input.tag?.trim()
+
+    if (sqliteDb) {
+      const planningClauses = ['group_id = ?']
+      const planningParams: Array<string | number> = [input.workspaceId]
+      if (q) {
+        planningClauses.push('(title LIKE ? OR IFNULL(notes, \'\') LIKE ? OR date LIKE ? OR start LIKE ? OR end LIKE ? OR tags_json LIKE ?)')
+        const like = `%${q}%`
+        planningParams.push(like, like, like, like, like, like)
+      }
+      if (input.status) {
+        planningClauses.push('status = ?')
+        planningParams.push(input.status)
+      }
+      if (input.priority) {
+        planningClauses.push('priority = ?')
+        planningParams.push(input.priority)
+      }
+      if (tag) {
+        planningClauses.push('tags_json LIKE ?')
+        planningParams.push(`%"${tag}"%`)
+      }
+      if (input.from) {
+        planningClauses.push('date >= ?')
+        planningParams.push(input.from)
+      }
+      if (input.to) {
+        planningClauses.push('date <= ?')
+        planningParams.push(input.to)
+      }
+      planningParams.push(limit)
+      const planning = sqliteDb
+        .prepare(
+          `SELECT id, date, start, end, title, notes, status, priority, tags_json as tagsJson
+           FROM planning_items
+           WHERE ${planningClauses.join(' AND ')}
+           ORDER BY date DESC, start DESC
+           LIMIT ?`,
+        )
+        .all(...planningParams) as DbSearchPlanning[]
+
+      const notesClauses = ['group_id = ?']
+      const notesParams: Array<string | number> = [input.workspaceId]
+      if (q) {
+        notesClauses.push('(subject LIKE ? OR body LIKE ?)')
+        const like = `%${q}%`
+        notesParams.push(like, like)
+      }
+      notesParams.push(limit)
+      const notes = sqliteDb
+        .prepare(
+          `SELECT id, subject, body, updated_at as updatedAt
+           FROM notes
+           WHERE ${notesClauses.join(' AND ')}
+           ORDER BY updated_at DESC
+           LIMIT ?`,
+        )
+        .all(...notesParams) as DbSearchNote[]
+
+      const fileClauses = ['f.workspace_id = ?']
+      const fileParams: Array<string | number> = [input.workspaceId, input.workspaceId]
+      if (q) {
+        fileClauses.push('(f.name LIKE ? OR IFNULL(m.folder, \'\') LIKE ? OR IFNULL(m.labels_json, \'\') LIKE ?)')
+        const like = `%${q}%`
+        fileParams.push(like, like, like)
+      }
+      if (tag) {
+        fileClauses.push('IFNULL(m.labels_json, \'\') LIKE ?')
+        fileParams.push(`%"${tag}"%`)
+      }
+      fileParams.push(limit)
+      const files = sqliteDb
+        .prepare(
+          `SELECT f.group_key as groupKey, f.name, f.type, m.folder, m.labels_json as labelsJson, f.updated_at as updatedAt
+           FROM files f
+           JOIN (
+             SELECT group_key, MAX(version) as maxv
+             FROM files
+             WHERE workspace_id=?
+             GROUP BY group_key
+           ) mv ON mv.group_key = f.group_key AND mv.maxv = f.version
+           LEFT JOIN file_meta m ON m.workspace_id = f.workspace_id AND m.group_key = f.group_key
+           WHERE ${fileClauses.join(' AND ')}
+           ORDER BY f.updated_at DESC
+           LIMIT ?`,
+        )
+        .all(...fileParams) as DbSearchFile[]
+
+      return { planning, notes, files }
+    }
+
+    const s = readJson()
+    const qLower = q.toLowerCase()
+    const tagLower = tag?.toLowerCase()
+    const planning = s.planning
+      .filter((p) => p.groupId === input.workspaceId)
+      .filter((p) => {
+        if (input.status && p.status !== input.status) return false
+        if (input.priority && p.priority !== input.priority) return false
+        if (input.from && p.date < input.from) return false
+        if (input.to && p.date > input.to) return false
+        if (tagLower) {
+          try {
+            const tags = JSON.parse(p.tagsJson || '[]') as string[]
+            if (!tags.some((t) => t.toLowerCase() === tagLower)) return false
+          } catch {
+            return false
+          }
+        }
+        if (!qLower) return true
+        const hay = `${p.title} ${p.notes ?? ''} ${p.date} ${p.start}-${p.end} ${p.tagsJson || ''}`.toLowerCase()
+        return hay.includes(qLower)
+      })
+      .sort((a, b) => (b.date + b.start).localeCompare(a.date + a.start))
+      .slice(0, limit)
+      .map(
+        (p) =>
+          ({
+            id: p.id,
+            date: p.date,
+            start: p.start,
+            end: p.end,
+            title: p.title,
+            notes: p.notes ?? null,
+            status: p.status,
+            priority: p.priority,
+            tagsJson: p.tagsJson ?? '[]',
+          }) as DbSearchPlanning,
+      )
+
+    const notes = s.notes
+      .filter((n) => n.groupId === input.workspaceId)
+      .filter((n) => {
+        if (!qLower) return true
+        const hay = `${n.subject} ${n.body}`.toLowerCase()
+        return hay.includes(qLower)
+      })
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, limit)
+      .map((n) => ({ id: n.id, subject: n.subject, body: n.body, updatedAt: n.updatedAt }))
+
+    return { planning, notes, files: [] }
   },
 
   setEmailVerificationForEmail: (

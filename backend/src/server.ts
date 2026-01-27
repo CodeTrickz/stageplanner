@@ -1071,6 +1071,21 @@ app.post('/links', requireAuth, asyncHandler(async (req, res) => {
 }))
 
 // Files (cloud) - workspace aware
+const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_BYTES || String(2 * 1024 * 1024))
+
+function isSafeMimeType(value: string) {
+  if (!value || value.length > 200) return false
+  // Basic mime-type format: type/subtype with optional + and .
+  return /^[a-z0-9][a-z0-9.+-]*\/[a-z0-9][a-z0-9.+-]*$/i.test(value)
+}
+
+function sanitizeUploadName(name: string) {
+  const trimmed = name.trim()
+  const base = path.basename(trimmed)
+  if (!base || base !== trimmed) return null
+  if (base.includes('\u0000')) return null
+  return base
+}
 const filesListQuerySchema = z.object({
   workspaceId: z.string().optional(),
 })
@@ -1164,6 +1179,12 @@ app.post('/files', requireAuth, asyncHandler(async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: 'invalid_input', issues: parsed.error.issues })
 
   const d = parsed.data
+  const safeName = sanitizeUploadName(d.name)
+  if (!safeName) return res.status(400).json({ error: 'invalid_file_name' })
+  if (!isSafeMimeType(d.type)) return res.status(400).json({ error: 'invalid_file_type' })
+  if (!Number.isFinite(d.size) || d.size > MAX_UPLOAD_BYTES) {
+    return res.status(413).json({ error: 'file_too_large', maxBytes: MAX_UPLOAD_BYTES })
+  }
 
   // Check workspace membership if workspaceId provided
   let finalWorkspaceId: string | null = null
@@ -1179,7 +1200,7 @@ app.post('/files', requireAuth, asyncHandler(async (req, res) => {
   // Decode base64 data
   let data: Buffer
   try {
-    data = Buffer.from(d.data, 'base64')
+  data = Buffer.from(d.data, 'base64')
   } catch (e) {
     return res.status(400).json({ error: 'invalid_file_data' })
   }
@@ -1187,6 +1208,9 @@ app.post('/files', requireAuth, asyncHandler(async (req, res) => {
   // Validate size matches
   if (data.length !== d.size) {
     return res.status(400).json({ error: 'size_mismatch' })
+  }
+  if (data.length > MAX_UPLOAD_BYTES) {
+    return res.status(413).json({ error: 'file_too_large', maxBytes: MAX_UPLOAD_BYTES })
   }
 
   // Check if file with same groupKey exists
@@ -1198,7 +1222,7 @@ app.post('/files', requireAuth, asyncHandler(async (req, res) => {
   const file = db.createFile({
     userId: u.id,
     workspaceId: finalWorkspaceId,
-    name: d.name,
+    name: safeName,
     type: d.type,
     size: d.size,
     groupKey: d.groupKey,

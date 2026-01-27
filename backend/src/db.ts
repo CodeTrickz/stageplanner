@@ -2031,6 +2031,47 @@ export const db = {
     return { updatedCount: uniqueIds.length }
   },
 
+  bulkDeletePlanningItems: (
+    workspaceId: string,
+    itemIds: string[],
+  ): { deletedCount: number; error?: 'not_found' | 'wrong_workspace' } => {
+    const uniqueIds = Array.from(new Set(itemIds))
+    if (sqliteDb) {
+      const tx = sqliteDb.transaction(() => {
+        const placeholders = uniqueIds.map(() => '?').join(',')
+        const rows = sqliteDb
+          .prepare(
+            `SELECT id, group_id as groupId
+             FROM planning_items
+             WHERE id IN (${placeholders})`,
+          )
+          .all(...uniqueIds) as Array<{ id: string; groupId: string | null }>
+        if (rows.length !== uniqueIds.length) return { deletedCount: 0, error: 'not_found' as const }
+        if (rows.some((r) => r.groupId !== workspaceId)) return { deletedCount: 0, error: 'wrong_workspace' as const }
+
+        const whereIds = uniqueIds.map(() => '?').join(',')
+        const info = sqliteDb
+          .prepare(
+            `DELETE FROM planning_items
+             WHERE id IN (${whereIds}) AND group_id = ?`,
+          )
+          .run(...uniqueIds, workspaceId)
+        return { deletedCount: info.changes }
+      })
+      return tx()
+    }
+
+    const s = readJson()
+    const targetItems = s.planning.filter((p) => uniqueIds.includes(p.id))
+    if (targetItems.length !== uniqueIds.length) return { deletedCount: 0, error: 'not_found' }
+    if (targetItems.some((p) => p.groupId !== workspaceId)) return { deletedCount: 0, error: 'wrong_workspace' }
+    const before = s.planning.length
+    s.planning = s.planning.filter((p) => !uniqueIds.includes(p.id))
+    const deletedCount = before - s.planning.length
+    if (deletedCount > 0) writeJson(s)
+    return { deletedCount }
+  },
+
   setEmailVerificationForEmail: (
     email: string,
     tokenHash: string,

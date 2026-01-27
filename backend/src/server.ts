@@ -1720,6 +1720,11 @@ const planningBulkUpdateSchema = z.object({
     }),
 })
 
+const planningBulkDeleteSchema = z.object({
+  workspaceId: z.string().min(1),
+  itemIds: z.array(z.string().min(1)).min(1).max(100),
+})
+
 app.patch('/planning/bulk', requireAuth, asyncHandler(async (req, res) => {
   const u = getDbUserOr401(req, res)
   if (!u) return
@@ -1750,6 +1755,32 @@ app.patch('/planning/bulk', requireAuth, asyncHandler(async (req, res) => {
   invalidateWorkspaceCache(workspaceId)
   broadcastWorkspace(workspaceId, 'planning')
   return res.json({ updatedCount: result.updatedCount })
+}))
+
+app.post('/planning/bulk-delete', requireAuth, asyncHandler(async (req, res) => {
+  const u = getDbUserOr401(req, res)
+  if (!u) return
+  const parsed = planningBulkDeleteSchema.safeParse(req.body)
+  if (!parsed.success) return res.status(400).json({ error: 'invalid_input' })
+  const { workspaceId, itemIds } = parsed.data
+
+  const role = db.getMembershipRole(u.id, workspaceId)
+  if (!role) return res.status(403).json({ error: 'not_member' })
+  if (!canDeleteInWorkspace(u.id, workspaceId, u.id)) {
+    return res.status(403).json({ error: 'insufficient_permissions' })
+  }
+
+  const result = db.bulkDeletePlanningItems(workspaceId, itemIds)
+  if (result.error === 'not_found') return res.status(404).json({ error: 'not_found' })
+  if (result.error === 'wrong_workspace') return res.status(403).json({ error: 'wrong_workspace' })
+
+  audit(req, 'planning.bulk_delete', 'planning', workspaceId, {
+    workspaceId,
+    itemCount: result.deletedCount,
+  })
+  invalidateWorkspaceCache(workspaceId)
+  broadcastWorkspace(workspaceId, 'planning')
+  return res.json({ deletedCount: result.deletedCount })
 }))
 
 app.post('/planning', requireAuth, asyncHandler(async (req, res) => {

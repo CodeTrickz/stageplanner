@@ -647,6 +647,42 @@ export function PlanningPage() {
     }
   }
 
+  async function applyBulkDelete() {
+    if (!canEdit) return
+    if (!token || !currentWorkspace?.id) return
+    if (selectedIds.length === 0) return
+    const ok = window.confirm(
+      `Je staat op het punt ${selectedIds.length} items te verwijderen. Dit kan niet ongedaan worden gemaakt.`,
+    )
+    if (!ok) return
+
+    setBulkLoading(true)
+    try {
+      const result = await apiFetch('/planning/bulk-delete', {
+        method: 'POST',
+        token: token || undefined,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          workspaceId: currentWorkspace.id,
+          itemIds: selectedIds,
+        }),
+      })
+      const deletedCount = Number(result.deletedCount || 0)
+      setItems((prev) => prev.filter((it) => !selectedIds.includes(it.id)))
+      setSelectedIds([])
+      setLastSelectedId(null)
+      setRefreshTick((v) => v + 1)
+      setBulkToast({ message: `${deletedCount || selectedIds.length} items verwijderd.`, severity: 'success' })
+    } catch (e) {
+      setBulkToast({ message: 'Bulk verwijderen mislukt. Probeer opnieuw.', severity: 'error' })
+      if (import.meta.env.DEV) {
+        console.error('Failed to bulk delete planning items:', e)
+      }
+    } finally {
+      setBulkLoading(false)
+    }
+  }
+
   async function applyTemplateToWeek() {
     if (!canEdit) return
     if (!token || !currentWorkspace?.id || !selectedTemplateId) return
@@ -1058,6 +1094,15 @@ export function PlanningPage() {
             </Button>
             <Button variant="contained" size="small" onClick={applyBulkUpdate} disabled={bulkLoading || !canEdit}>
               {bulkLoading ? 'Bezig...' : 'Toepassen'}
+            </Button>
+            <Button
+              variant="outlined"
+              color="error"
+              size="small"
+              onClick={applyBulkDelete}
+              disabled={bulkLoading || !canEdit}
+            >
+              Verwijderen
             </Button>
             <Button
               variant="text"

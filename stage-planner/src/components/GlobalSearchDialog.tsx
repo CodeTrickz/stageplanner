@@ -77,11 +77,11 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
     let cancelled = false
     const t = setTimeout(async () => {
       if (!qq && !status && !priority && !tag && !dateFrom && !dateTo) {
-        setResults([])
+        setResults({ planning: [], notes: [], files: [] })
         return
       }
       if (!token || !currentWorkspace?.id) {
-        setResults([])
+        setResults({ planning: [], notes: [], files: [] })
         return
       }
       const planningOut: PlanningResult[] = []

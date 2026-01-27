@@ -121,7 +121,7 @@ function Section({
 
 export function DashboardPage() {
   const nav = useNavigate()
-  const { weekStart, timeFormat, stageStart, stageEnd, stageHolidaysJson } = useSettings()
+  const { weekStart, timeFormat, stageStart, stageEnd } = useSettings()
   const token = useApiToken()
   const { currentWorkspace } = useWorkspace()
   const [items, setItems] = useState<ServerPlanningItem[]>([])
@@ -143,15 +143,6 @@ export function DashboardPage() {
   useEffect(() => {
     if (stageEnd && !exportTo) setExportTo(stageEnd)
   }, [stageEnd, exportTo])
-  const holidaySet = useMemo(() => {
-    try {
-      const arr = JSON.parse(stageHolidaysJson || '[]') as string[]
-      return new Set((arr || []).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)))
-    } catch {
-      return new Set<string>()
-    }
-  }, [stageHolidaysJson])
-
   useEffect(() => {
     if (!token || !currentWorkspace?.id) return
     const workspaceId = String(currentWorkspace.id)
@@ -233,7 +224,7 @@ export function DashboardPage() {
       workedStageDays,
       excludedStageDays,
     }
-  }, [itemsSorted, today, nowMinutes, weekStartYmd, weekEnd, stageStart, stageEnd, holidaySet])
+  }, [itemsSorted, today, nowMinutes, weekStartYmd, weekEnd])
 
   async function downloadStageReport() {
     if (!token || !currentWorkspace?.id) return

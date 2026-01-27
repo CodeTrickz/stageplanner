@@ -77,7 +77,7 @@ export function TeamPage() {
     } finally {
       setLoading(false)
     }
-  }, [currentWorkspace?.id, api, canManageTeam])
+  }, [currentWorkspace, api, canManageTeam])
 
   useEffect(() => {
     void loadMembers()

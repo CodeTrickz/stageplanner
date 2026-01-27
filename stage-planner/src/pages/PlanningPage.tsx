@@ -24,7 +24,7 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { DayTimeline } from '../components/DayTimeline'
 import { MonthCalendar } from '../components/MonthCalendar'
@@ -212,7 +212,7 @@ export function PlanningPage() {
     }
   })
 
-  async function fetchTemplates() {
+  const fetchTemplates = useCallback(async () => {
     if (!token || !currentWorkspace?.id) {
       setTemplates([])
       setSelectedTemplateId('')
@@ -234,11 +234,11 @@ export function PlanningPage() {
     } finally {
       setTemplatesLoading(false)
     }
-  }
+  }, [token, currentWorkspace?.id, selectedTemplateId])
 
   useEffect(() => {
     void fetchTemplates()
-  }, [token, currentWorkspace?.id])
+  }, [fetchTemplates])
 
   // Load planning items for current workspace
   useEffect(() => {

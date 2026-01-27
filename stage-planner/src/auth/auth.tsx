@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useSettings } from '../app/settings'
 

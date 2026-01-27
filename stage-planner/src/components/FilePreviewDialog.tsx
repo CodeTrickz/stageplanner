@@ -106,7 +106,7 @@ export function FilePreviewDialog({
     return () => {
       cancelled = true
     }
-  }, [open, file?.remoteId, token, localBlob])
+  }, [open, file, token, localBlob, blob])
 
   useEffect(() => {
     let cancelled = false
@@ -184,7 +184,7 @@ export function FilePreviewDialog({
       setOcrStatus('error')
       setOcrText(e instanceof Error ? e.message : 'ocr_failed')
     }
-  }, [file, cat, ocrLanguage, activeBlob])
+  }, [cat, ocrLanguage, activeBlob])
 
   // Auto run OCR/extract on open (only if not cached yet)
   useEffect(() => {

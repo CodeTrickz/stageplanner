@@ -1,6 +1,7 @@
 import cors from 'cors'
 import dotenv from 'dotenv'
 import express from 'express'
+import rateLimit from 'express-rate-limit'
 import helmet from 'helmet'
 import morgan from 'morgan'
 import bcrypt from 'bcryptjs'
@@ -224,6 +225,20 @@ if (process.env.TRUST_PROXY) {
   const v = raw === 'true' ? 1 : raw === 'false' ? 0 : Number(raw)
   if (Number.isFinite(v)) app.set('trust proxy', v)
 }
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'rate_limited' },
+})
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'rate_limited' },
+})
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -252,6 +267,13 @@ app.use((req, res, next) => {
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
   res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()')
   next()
+})
+app.use(['/auth', '/api/auth'], authLimiter)
+app.use((req, res, next) => {
+  const path = req.path
+  if (path === '/health' || path === '/metrics') return next()
+  if (path.startsWith('/auth') || path.startsWith('/api/auth')) return next()
+  return apiLimiter(req, res, next)
 })
 app.use(
   cors({

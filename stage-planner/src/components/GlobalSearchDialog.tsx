@@ -23,12 +23,22 @@ type PlanningResult = { kind: 'planning'; id: string; primary: string; secondary
 type NoteResult = { kind: 'note'; id: string; primary: string; secondary: string; updatedAt: number }
 type FileResult = { kind: 'file'; groupKey: string; primary: string; secondary: string; updatedAt: number }
 
-function stripHtml(html: string) {
-  try {
-    return new DOMParser().parseFromString(html, 'text/html').body.textContent ?? ''
-  } catch {
-    return html
-  }
+function stripHtmlToText(input: string): string {
+  // Avoid DOMParser/innerHTML to prevent treating untrusted strings as HTML.
+  return String(input ?? '')
+    .replace(/\r\n/g, '\n')
+    .replace(/<\s*br\s*\/?\s*>/gi, '\n')
+    .replace(/<\/\s*p\s*>/gi, '\n')
+    .replace(/<\/\s*div\s*>/gi, '\n')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
 }
 
 export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -130,7 +140,7 @@ export function GlobalSearchDialog({ open, onClose }: { open: boolean; onClose: 
 
         const notes = (res.notes || []) as Array<{ id: string; subject: string; body: string; updatedAt: number }>
         for (const n of notes) {
-          const bodyTxt = stripHtml(n.body || '')
+          const bodyTxt = stripHtmlToText(n.body || '')
           notesOut.push({
             kind: 'note',
             id: n.id,

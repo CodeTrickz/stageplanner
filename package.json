@@ -8,8 +8,8 @@
     "release": "standard-version --tag-prefix v --preset conventionalcommits && node scripts/create-github-release.mjs"
   },
   "devDependencies": {
-    "@commitlint/cli": "^19.5.0",
-    "@commitlint/config-conventional": "^19.5.0",
+    "@commitlint/cli": "^20.3.1",
+    "@commitlint/config-conventional": "^20.3.1",
     "husky": "^9.0.11",
     "standard-version": "^9.5.0"
   }

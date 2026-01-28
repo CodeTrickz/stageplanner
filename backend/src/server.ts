@@ -16,7 +16,7 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import { sendMail } from './mail'
 import fs from 'node:fs'
-import { register, httpRequestDurationSeconds, httpRequestsTotal, httpErrorsTotal, sseActiveConnections } from './metrics'
+import { register, httpRequestDurationSeconds, httpRequestsTotal, httpErrorsTotal, sseActiveConnections, sseDisconnectsTotal } from './metrics'
 import { stringify } from 'csv-stringify'
 import { buildStageReportData } from './stage-report'
 import { context, trace } from '@opentelemetry/api'
@@ -834,6 +834,7 @@ app.get('/events', asyncHandler(async (req, res) => {
     clearInterval(keepAlive)
     sseClients.delete(client)
     sseActiveConnections.set(sseClients.size)
+    sseDisconnectsTotal.inc()
     span.end()
   })
   return

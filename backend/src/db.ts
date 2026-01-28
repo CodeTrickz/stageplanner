@@ -2,7 +2,7 @@ import Database from 'better-sqlite3'
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import { dbQueryDurationSeconds, classifySqlKind } from './metrics'
+import { dbErrorsTotal, dbQueryDurationSeconds, classifySqlKind } from './metrics'
 
 export type DbUser = {
   id: string
@@ -829,6 +829,9 @@ function openSqlite() {
         const start = process.hrtime.bigint()
         try {
           return orig.apply(stmt, args)
+        } catch (e) {
+          dbErrorsTotal.inc()
+          throw e
         } finally {
           const end = process.hrtime.bigint()
           const sec = Number(end - start) / 1e9

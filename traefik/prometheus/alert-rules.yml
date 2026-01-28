@@ -1,0 +1,52 @@
+groups:
+  - name: stageplanner-alerts
+    rules:
+      # 1) 5xx error rate > 5% (5 min)
+      - alert: High5xxErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(http_requests_total[5m])), 1e-9)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High 5xx error rate (>5%)"
+          description: "5xx error ratio is {{ $value | humanizePercentage }} over the last 5m."
+
+      # 2) DB errors > 0 (1 min)
+      - alert: DatabaseErrorsDetected
+        expr: increase(db_errors_total[1m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Database errors detected"
+          description: "Database errors increased by {{ $value }} in the last 1m."
+
+      # 3) SSE disconnect rate > threshold (default: > 6/min over 5m)
+      - alert: HighSseDisconnectRate
+        expr: rate(sse_disconnects_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High SSE disconnect rate"
+          description: "SSE disconnect rate is {{ $value }} disconnects/sec over the last 5m."
+
+      # 4) Request latency p95 > 2s
+      - alert: HighRequestLatencyP95
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High request latency p95 (>2s)"
+          description: "p95 latency is {{ $value }}s over the last 5m."
+

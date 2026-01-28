@@ -36,6 +36,26 @@ jobs:
         working-directory: backend
         run: npm run build
 
+      - name: Observability - OpenTelemetry init present
+        run: test -f backend/src/otel.ts
+
+      - name: Observability - /metrics endpoint works
+        working-directory: backend
+        run: |
+          node dist/server.js &
+          SERVER_PID=$!
+          # wacht tot server luistert
+          for i in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:3001/metrics >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          # valideer dat belangrijke metrics aanwezig zijn
+          curl -fsS http://127.0.0.1:3001/metrics | grep -q "http_requests_total"
+          curl -fsS http://127.0.0.1:3001/metrics | grep -q "db_query_duration_seconds"
+          kill $SERVER_PID || true
+
       - name: Frontend - install
         working-directory: stage-planner
         run: npm ci
@@ -58,3 +78,13 @@ jobs:
 
       - name: Docker build check
         run: docker build .
+
+      - name: Observability - Traefik config valid
+        env:
+          DOMAIN: ci.example.com
+          SUBDOMAIN: traefik
+          ACME_EMAIL: ci@example.com
+          JWT_SECRET: ci-test-secret
+          APP_URL: https://ci.example.com
+          CORS_ORIGIN: https://ci.example.com
+        run: docker compose -f docker-compose.yml config -q

@@ -31,6 +31,18 @@ export const sseActiveConnections = new Gauge({
   registers: [register],
 })
 
+export const sseDisconnectsTotal = new Counter({
+  name: 'sse_disconnects_total',
+  help: 'Total number of SSE disconnects',
+  registers: [register],
+})
+
+export const dbErrorsTotal = new Counter({
+  name: 'db_errors_total',
+  help: 'Total number of database errors',
+  registers: [register],
+})
+
 export const dbQueryDurationSeconds = new Histogram({
   name: 'db_query_duration_seconds',
   help: 'Duration of database queries in seconds',

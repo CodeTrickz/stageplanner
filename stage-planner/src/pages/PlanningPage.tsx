@@ -162,6 +162,10 @@ export function PlanningPage() {
     defaultPriority,
     defaultStatus,
     timeFormat,
+    planningNewItemKey,
+    planningSaveKey,
+    planningPrevWeekKey,
+    planningNextWeekKey,
   } = useSettings()
   const permissions = getWorkspacePermissions(currentWorkspace?.role)
   const canEdit = permissions.canEdit
@@ -826,14 +830,14 @@ export function PlanningPage() {
       const key = event.key
 
       // N => new planning item
-      if ((key === 'n' || key === 'N') && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      if (key.toLowerCase() === planningNewItemKey.toLowerCase() && !event.metaKey && !event.ctrlKey && !event.altKey) {
         event.preventDefault()
         startNew()
         return
       }
 
-      // Ctrl+S / Cmd+S => save current draft (when dialog is open)
-      if ((key === 's' || key === 'S') && (event.metaKey || event.ctrlKey)) {
+      // Ctrl+<save key> / Cmd+<save key> => save current draft (when dialog is open)
+      if (key.toLowerCase() === planningSaveKey.toLowerCase() && (event.metaKey || event.ctrlKey)) {
         event.preventDefault()
         if (open && !validation) {
           void save()
@@ -841,12 +845,12 @@ export function PlanningPage() {
         return
       }
 
-      // Left / Right arrow => previous / next week (based on current selected date)
-      if (key === 'ArrowLeft' || key === 'ArrowRight') {
+      // Previous / next week (based on current selected date)
+      if (key === planningPrevWeekKey || key === planningNextWeekKey) {
         event.preventDefault()
         try {
           const current = dateFromYmdLocal(date)
-          const deltaDays = key === 'ArrowLeft' ? -7 : 7
+          const deltaDays = key === planningPrevWeekKey ? -7 : 7
           current.setDate(current.getDate() + deltaDays)
           setDate(yyyyMmDdLocal(current))
         } catch {
@@ -854,7 +858,7 @@ export function PlanningPage() {
         }
       }
     },
-    [canEdit, open, validation, date],
+    [canEdit, open, validation, date, planningNewItemKey, planningSaveKey, planningPrevWeekKey, planningNextWeekKey],
   )
 
   return (

@@ -5,6 +5,7 @@ import DashboardIcon from '@mui/icons-material/Dashboard'
 import ListAltIcon from '@mui/icons-material/ListAlt'
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings'
 import SettingsIcon from '@mui/icons-material/Settings'
+import NotificationsIcon from '@mui/icons-material/Notifications'
 import SearchIcon from '@mui/icons-material/Search'
 import MenuIcon from '@mui/icons-material/Menu'
 import PeopleIcon from '@mui/icons-material/People'
@@ -41,6 +42,8 @@ import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { GlobalSearchDialog } from '../components/GlobalSearchDialog'
 import { WorkspaceSelector } from '../components/WorkspaceSelector'
 import { NotificationsMenu } from '../components/NotificationsMenu'
+import { useSettings } from './settings'
+import { useGlobalHotkeys } from '../hooks/useGlobalHotkeys'
 
 const tabs = [
   { label: 'Dashboard', to: '/dashboard', icon: <DashboardIcon /> },
@@ -49,6 +52,7 @@ const tabs = [
   { label: 'Taken', to: '/taken', icon: <ListAltIcon /> },
   { label: 'Bestanden', to: '/bestanden', icon: <AttachFileIcon /> },
   { label: 'Notities / mail', to: '/notities', icon: <DescriptionIcon /> },
+  { label: 'Notificaties', to: '/notificaties', icon: <NotificationsIcon /> },
   { label: 'Team', to: '/team', icon: <PeopleIcon /> },
   { label: 'Instellingen', to: '/settings', icon: <SettingsIcon /> },
   { label: 'Admin', to: '/admin', icon: <AdminPanelSettingsIcon />, adminOnly: true },
@@ -64,6 +68,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const value = tabValueFromPath(pathname)
   const nav = useNavigate()
   const { user, logout } = useAuth()
+  const { navDashboardKey, navPlanningKey, navSettingsKey, navSearchKey } = useSettings()
   const theme = useTheme()
   // Responsive breakpoints: xs (<600px), sm (600-960px), md (960-1280px), lg (1280px+)
   const isMobile = useMediaQuery(theme.breakpoints.down('sm')) // < 600px
@@ -88,6 +93,37 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         setRateLimitMessage(evt.message)
       }),
     [],
+  )
+
+  // Global navigation hotkeys (Ctrl/Cmd + key)
+  useGlobalHotkeys(
+    (event) => {
+      if (!user) return
+      if (!event.ctrlKey && !event.metaKey) return
+      const key = event.key.toLowerCase()
+
+      if (key === navDashboardKey) {
+        event.preventDefault()
+        nav('/dashboard')
+        return
+      }
+      if (key === navPlanningKey) {
+        event.preventDefault()
+        nav('/planning')
+        return
+      }
+      if (key === navSettingsKey) {
+        event.preventDefault()
+        nav('/settings')
+        return
+      }
+      if (key === navSearchKey) {
+        event.preventDefault()
+        setSearchOpen(true)
+        return
+      }
+    },
+    [user, nav, navDashboardKey, navPlanningKey, navSettingsKey, navSearchKey],
   )
 
   const statusChip = (() => {

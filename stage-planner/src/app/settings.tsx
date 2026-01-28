@@ -39,6 +39,18 @@ type SettingsState = {
 
   // Security / session
   idleLogoutMinutes: number // 0 = never
+
+  // Keyboard shortcuts (navigation)
+  navDashboardKey: string // letter for Ctrl/Cmd + key (e.g. 'd')
+  navPlanningKey: string // letter for Ctrl/Cmd + key (e.g. 'p')
+  navSettingsKey: string // letter for Ctrl/Cmd + key (e.g. 'i')
+  navSearchKey: string // letter for Ctrl/Cmd + key (e.g. 'k')
+
+  // Keyboard shortcuts (planning page)
+  planningNewItemKey: string // letter for new item (e.g. 'n')
+  planningSaveKey: string // letter used with Ctrl/Cmd for save (e.g. 's')
+  planningPrevWeekKey: string // key identifier for previous week (e.g. 'ArrowLeft')
+  planningNextWeekKey: string // key identifier for next week (e.g. 'ArrowRight')
 }
 
 type Settings = SettingsState & {
@@ -68,6 +80,27 @@ type Settings = SettingsState & {
   setErrorLogMaxEntries: (v: number) => void
 
   setIdleLogoutMinutes: (v: number) => void
+
+  // Keyboard shortcuts (navigation)
+  navDashboardKey: string
+  navPlanningKey: string
+  navSettingsKey: string
+  setNavDashboardKey: (v: string) => void
+  setNavPlanningKey: (v: string) => void
+  setNavSettingsKey: (v: string) => void
+
+  navSearchKey: string
+  setNavSearchKey: (v: string) => void
+
+  // Keyboard shortcuts (planning page)
+  planningNewItemKey: string
+  planningSaveKey: string
+  planningPrevWeekKey: string
+  planningNextWeekKey: string
+  setPlanningNewItemKey: (v: string) => void
+  setPlanningSaveKey: (v: string) => void
+  setPlanningPrevWeekKey: (v: string) => void
+  setPlanningNextWeekKey: (v: string) => void
 }
 
 const SettingsContext = createContext<Settings | null>(null)
@@ -111,6 +144,14 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [errorLogRetentionDays, setErrorLogRetentionDays] = useState(14)
   const [errorLogMaxEntries, setErrorLogMaxEntries] = useState(500)
   const [idleLogoutMinutes, setIdleLogoutMinutes] = useState(() => defaultIdleLogoutMinutes())
+  const [navDashboardKey, setNavDashboardKey] = useState('d')
+  const [navPlanningKey, setNavPlanningKey] = useState('p')
+  const [navSettingsKey, setNavSettingsKey] = useState('i')
+   const [navSearchKey, setNavSearchKey] = useState('k')
+  const [planningNewItemKey, setPlanningNewItemKey] = useState('n')
+  const [planningSaveKey, setPlanningSaveKey] = useState('s')
+  const [planningPrevWeekKey, setPlanningPrevWeekKey] = useState('ArrowLeft')
+  const [planningNextWeekKey, setPlanningNextWeekKey] = useState('ArrowRight')
 
   useEffect(() => {
     try {
@@ -155,6 +196,21 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       if (typeof parsed?.errorLogMaxEntries === 'number') setErrorLogMaxEntries(clampInt(parsed.errorLogMaxEntries, 50, 5000))
 
       if (typeof parsed?.idleLogoutMinutes === 'number') setIdleLogoutMinutes(clampInt(parsed.idleLogoutMinutes, 0, 240))
+      if (typeof parsed?.navDashboardKey === 'string' && parsed.navDashboardKey.length === 1)
+        setNavDashboardKey(parsed.navDashboardKey.toLowerCase())
+      if (typeof parsed?.navPlanningKey === 'string' && parsed.navPlanningKey.length === 1)
+        setNavPlanningKey(parsed.navPlanningKey.toLowerCase())
+      if (typeof parsed?.navSettingsKey === 'string' && parsed.navSettingsKey.length === 1)
+        setNavSettingsKey(parsed.navSettingsKey.toLowerCase())
+      if (typeof parsed?.navSearchKey === 'string' && parsed.navSearchKey.length === 1)
+        setNavSearchKey(parsed.navSearchKey.toLowerCase())
+
+      if (typeof parsed?.planningNewItemKey === 'string' && parsed.planningNewItemKey.length === 1)
+        setPlanningNewItemKey(parsed.planningNewItemKey.toLowerCase())
+      if (typeof parsed?.planningSaveKey === 'string' && parsed.planningSaveKey.length === 1)
+        setPlanningSaveKey(parsed.planningSaveKey.toLowerCase())
+      if (typeof parsed?.planningPrevWeekKey === 'string') setPlanningPrevWeekKey(parsed.planningPrevWeekKey)
+      if (typeof parsed?.planningNextWeekKey === 'string') setPlanningNextWeekKey(parsed.planningNextWeekKey)
     } catch {
       // ignore
     }
@@ -184,6 +240,14 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         errorLogRetentionDays,
         errorLogMaxEntries,
         idleLogoutMinutes,
+        navDashboardKey,
+        navPlanningKey,
+        navSettingsKey,
+        navSearchKey,
+        planningNewItemKey,
+        planningSaveKey,
+        planningPrevWeekKey,
+        planningNextWeekKey,
       }
       localStorage.setItem(KEY, JSON.stringify(next))
     } catch {
@@ -211,6 +275,14 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     errorLogRetentionDays,
     errorLogMaxEntries,
     idleLogoutMinutes,
+    navDashboardKey,
+    navPlanningKey,
+    navSettingsKey,
+    navSearchKey,
+    planningNewItemKey,
+    planningSaveKey,
+    planningPrevWeekKey,
+    planningNextWeekKey,
   ])
 
   const value = useMemo<Settings>(
@@ -262,6 +334,24 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
       idleLogoutMinutes,
       setIdleLogoutMinutes,
+
+      navDashboardKey,
+      setNavDashboardKey,
+      navPlanningKey,
+      setNavPlanningKey,
+      navSettingsKey,
+      setNavSettingsKey,
+      navSearchKey,
+      setNavSearchKey,
+
+      planningNewItemKey,
+      setPlanningNewItemKey,
+      planningSaveKey,
+      setPlanningSaveKey,
+      planningPrevWeekKey,
+      setPlanningPrevWeekKey,
+      planningNextWeekKey,
+      setPlanningNextWeekKey,
     }),
     [
       mode,

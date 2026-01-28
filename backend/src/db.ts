@@ -2289,6 +2289,26 @@ export const db = {
     return changed
   },
 
+  deleteNotifications: (userId: string, ids: string[]): number => {
+    if (ids.length === 0) return 0
+    if (sqliteDb) {
+      const placeholders = ids.map(() => '?').join(',')
+      const info = sqliteDb
+        .prepare(
+          `DELETE FROM notifications
+           WHERE user_id = ? AND id IN (${placeholders})`,
+        )
+        .run(userId, ...ids)
+      return info.changes
+    }
+    const s = readJson()
+    const before = s.notifications.length
+    s.notifications = s.notifications.filter((n) => n.userId !== userId || !ids.includes(n.id))
+    const deleted = before - s.notifications.length
+    if (deleted > 0) writeJson(s)
+    return deleted
+  },
+
   createDeadlineNotifications: (input: {
     nowMs: number
     soonDays: number

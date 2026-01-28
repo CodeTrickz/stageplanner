@@ -901,6 +901,10 @@ const notificationsReadSchema = z
   })
   .refine((v) => (v.ids && v.ids.length > 0) || v.workspaceId, { message: 'missing_target' })
 
+const notificationsDeleteSchema = z.object({
+  ids: z.array(z.string().min(1)).max(200),
+})
+
 app.get('/notifications', requireAuth, asyncHandler(async (req, res) => {
   const u = getDbUserOr401(req, res)
   if (!u) return
@@ -924,6 +928,14 @@ app.post('/notifications/read', requireAuth, asyncHandler(async (req, res) => {
     ? db.markNotificationsRead(u.id, ids)
     : db.markNotificationsReadAll(u.id, workspaceId)
   return res.json({ updatedCount })
+}))
+
+app.post('/notifications/delete', requireAuth, asyncHandler(async (req, res) => {
+  const u = getDbUserOr401(req, res)
+  if (!u) return
+  const { ids } = parseBody(req, notificationsDeleteSchema)
+  const deletedCount = db.deleteNotifications(u.id, ids)
+  return res.json({ deletedCount })
 }))
 
 // Client-side settings changes: log to audit

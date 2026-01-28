@@ -1,16 +1,7 @@
 import NotificationsIcon from '@mui/icons-material/Notifications'
-import {
-  Badge,
-  Box,
-  Button,
-  Divider,
-  IconButton,
-  ListItemText,
-  Menu,
-  MenuItem,
-  Typography,
-} from '@mui/material'
+import { Badge, Box, Button, Divider, IconButton, ListItemText, Menu, MenuItem, Typography } from '@mui/material'
 import { useCallback, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { apiFetch, useApiToken } from '../api/client'
 import { useWorkspace } from '../hooks/useWorkspace'
 import { useWorkspaceEvents } from '../hooks/useWorkspaceEvents'
@@ -29,6 +20,7 @@ type NotificationItem = {
 export function NotificationsMenu() {
   const token = useApiToken()
   const { currentWorkspace } = useWorkspace()
+  const navigate = useNavigate()
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null)
   const [items, setItems] = useState<NotificationItem[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
@@ -120,11 +112,23 @@ export function NotificationsMenu() {
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
         PaperProps={{ sx: { width: 360, maxWidth: '90vw' } }}
       >
-        <Box sx={{ px: 2, py: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Box sx={{ px: 2, py: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
           <Typography sx={{ fontWeight: 700 }}>Notificaties</Typography>
-          <Button size="small" onClick={markAllRead} disabled={items.length === 0}>
-            Alles gelezen
-          </Button>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button size="small" onClick={markAllRead} disabled={items.length === 0}>
+              Alles gelezen
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => {
+                setAnchorEl(null)
+                navigate('/notificaties')
+              }}
+            >
+              Bekijk alle
+            </Button>
+          </Box>
         </Box>
         <Divider />
         {loading && <MenuItem disabled>Bezig met laden…</MenuItem>}

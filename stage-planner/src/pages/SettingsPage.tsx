@@ -66,6 +66,22 @@ export function SettingsPage() {
     setErrorLogMaxEntries,
     idleLogoutMinutes,
     setIdleLogoutMinutes,
+    navDashboardKey,
+    setNavDashboardKey,
+    navPlanningKey,
+    setNavPlanningKey,
+    navSettingsKey,
+    setNavSettingsKey,
+    navSearchKey,
+    setNavSearchKey,
+    planningNewItemKey,
+    setPlanningNewItemKey,
+    planningSaveKey,
+    setPlanningSaveKey,
+    planningPrevWeekKey,
+    setPlanningPrevWeekKey,
+    planningNextWeekKey,
+    setPlanningNextWeekKey,
   } = useSettings()
   const { token, user, login } = useAuth()
 
@@ -301,6 +317,186 @@ export function SettingsPage() {
             control={<Switch checked={reduceMotion} onChange={(e) => setReduceMotion(e.target.checked)} />}
             label="Minder animaties (reduce motion)"
           />
+        </Stack>
+      </Paper>
+
+      <Paper sx={{ p: { xs: 1.5, sm: 2 } }}>
+        <Stack spacing={{ xs: 1.5, sm: 2 }}>
+          <Typography sx={{ fontWeight: 900, fontSize: { xs: '0.875rem', sm: '1rem' } }}>Sneltoetsen</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Configure shortcuts. Unless stated otherwise, they use <b>Ctrl</b> (Windows/Linux) or <b>Cmd</b> (macOS) plus the key.
+          </Typography>
+
+          {/* Global navigation shortcuts */}
+          <Stack spacing={{ xs: 2, sm: 2.5 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+              Globale navigatie (alle pagina&apos;s)
+            </Typography>
+            <TextField
+              label="Dashboard shortcut key"
+              size="small"
+              value={navDashboardKey.toUpperCase()}
+              onKeyDown={(e) => {
+                const key = e.key.toLowerCase()
+                if (/^[a-z]$/.test(key)) {
+                  e.preventDefault()
+                  setNavDashboardKey(key)
+                }
+              }}
+              onChange={(e) => {
+                const raw = (e.target.value || '').toLowerCase()
+                if (raw && /^[a-z]$/.test(raw.slice(-1))) {
+                  setNavDashboardKey(raw.slice(-1))
+                }
+              }}
+              helperText={`Scope: overal • Shortcut: Ctrl+${navDashboardKey.toUpperCase()} / Cmd+${navDashboardKey.toUpperCase()} → Dashboard`}
+              inputProps={{ maxLength: 1 }}
+              sx={{ maxWidth: 320 }}
+            />
+            <TextField
+              label="Planning shortcut key"
+              size="small"
+              value={navPlanningKey.toUpperCase()}
+              onKeyDown={(e) => {
+                const key = e.key.toLowerCase()
+                if (/^[a-z]$/.test(key)) {
+                  e.preventDefault()
+                  setNavPlanningKey(key)
+                }
+              }}
+              onChange={(e) => {
+                const raw = (e.target.value || '').toLowerCase()
+                if (raw && /^[a-z]$/.test(raw.slice(-1))) {
+                  setNavPlanningKey(raw.slice(-1))
+                }
+              }}
+              helperText={`Scope: overal • Shortcut: Ctrl+${navPlanningKey.toUpperCase()} / Cmd+${navPlanningKey.toUpperCase()} → Planning`}
+              inputProps={{ maxLength: 1 }}
+              sx={{ maxWidth: 320 }}
+            />
+            <TextField
+              label="Instellingen shortcut key"
+              size="small"
+              value={navSettingsKey.toUpperCase()}
+              onKeyDown={(e) => {
+                const key = e.key.toLowerCase()
+                if (/^[a-z]$/.test(key)) {
+                  e.preventDefault()
+                  setNavSettingsKey(key)
+                }
+              }}
+              onChange={(e) => {
+                const raw = (e.target.value || '').toLowerCase()
+                if (raw && /^[a-z]$/.test(raw.slice(-1))) {
+                  setNavSettingsKey(raw.slice(-1))
+                }
+              }}
+              helperText={`Scope: overal • Shortcut: Ctrl+${navSettingsKey.toUpperCase()} / Cmd+${navSettingsKey.toUpperCase()} → Instellingen`}
+              inputProps={{ maxLength: 1 }}
+              sx={{ maxWidth: 320 }}
+            />
+            <TextField
+              label="Globale zoekdialoog key"
+              size="small"
+              value={navSearchKey.toUpperCase()}
+              onKeyDown={(e) => {
+                const key = e.key.toLowerCase()
+                if (/^[a-z]$/.test(key)) {
+                  e.preventDefault()
+                  setNavSearchKey(key)
+                }
+              }}
+              onChange={(e) => {
+                const raw = (e.target.value || '').toLowerCase()
+                if (raw && /^[a-z]$/.test(raw.slice(-1))) {
+                  setNavSearchKey(raw.slice(-1))
+                }
+              }}
+              helperText={`Scope: overal • Shortcut: Ctrl+${navSearchKey.toUpperCase()} / Cmd+${navSearchKey.toUpperCase()} → Open globale zoekdialoog`}
+              inputProps={{ maxLength: 1 }}
+              sx={{ maxWidth: 320 }}
+            />
+          </Stack>
+
+          {/* Planning page shortcuts */}
+          <Stack spacing={{ xs: 2, sm: 2.5 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+              Planning pagina
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Deze sneltoetsen werken alleen op de <b>Planning</b>-pagina.
+            </Typography>
+            <TextField
+              label="Nieuw item key"
+              size="small"
+              value={planningNewItemKey.toUpperCase()}
+              onKeyDown={(e) => {
+                const key = e.key.toLowerCase()
+                if (/^[a-z]$/.test(key)) {
+                  e.preventDefault()
+                  setPlanningNewItemKey(key)
+                }
+              }}
+              onChange={(e) => {
+                const raw = (e.target.value || '').toLowerCase()
+                if (raw && /^[a-z]$/.test(raw.slice(-1))) {
+                  setPlanningNewItemKey(raw.slice(-1))
+                }
+              }}
+              helperText={`Scope: Planning • Shortcut: ${planningNewItemKey.toUpperCase()} → Nieuw planning item`}
+              inputProps={{ maxLength: 1 }}
+              sx={{ maxWidth: 320 }}
+            />
+            <TextField
+              label="Opslaan key (met Ctrl/Cmd)"
+              size="small"
+              value={planningSaveKey.toUpperCase()}
+              onKeyDown={(e) => {
+                const key = e.key.toLowerCase()
+                if (/^[a-z]$/.test(key)) {
+                  e.preventDefault()
+                  setPlanningSaveKey(key)
+                }
+              }}
+              onChange={(e) => {
+                const raw = (e.target.value || '').toLowerCase()
+                if (raw && /^[a-z]$/.test(raw.slice(-1))) {
+                  setPlanningSaveKey(raw.slice(-1))
+                }
+              }}
+              helperText={`Scope: Planning • Shortcut: Ctrl+${planningSaveKey.toUpperCase()} / Cmd+${planningSaveKey.toUpperCase()} → Huidig item opslaan (dialog open)`}
+              inputProps={{ maxLength: 1 }}
+              sx={{ maxWidth: 320 }}
+            />
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+              <TextField
+                select
+                label="Vorige week key"
+                size="small"
+                value={planningPrevWeekKey}
+                onChange={(e) => setPlanningPrevWeekKey(e.target.value)}
+                helperText="Scope: Planning • Shortcut: key → Naar vorige week"
+                sx={{ maxWidth: 260 }}
+              >
+                <MenuItem value="ArrowLeft">Pijl links</MenuItem>
+                <MenuItem value="ArrowUp">Pijl omhoog</MenuItem>
+                <MenuItem value="PageUp">PageUp</MenuItem>
+              </TextField>
+              <TextField
+                select
+                label="Volgende week key"
+                size="small"
+                value={planningNextWeekKey}
+                onChange={(e) => setPlanningNextWeekKey(e.target.value)}
+                helperText="Scope: Planning • Shortcut: key → Naar volgende week"
+                sx={{ maxWidth: 260 }}
+              >
+                <MenuItem value="ArrowRight">Pijl rechts</MenuItem>
+                <MenuItem value="ArrowDown">Pijl omlaag</MenuItem>
+                <MenuItem value="PageDown">PageDown</MenuItem>
+              </TextField>
+            </Stack>
+          </Stack>
         </Stack>
       </Paper>
 

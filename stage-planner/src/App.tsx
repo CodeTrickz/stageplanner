@@ -14,6 +14,7 @@ import { TasksOverviewPage } from './pages/TasksOverviewPage'
 import { WeekPage } from './pages/WeekPage'
 import { SharedPage } from './pages/SharedPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { NotificationsPage } from './pages/NotificationsPage'
 import { TeamPage } from './pages/TeamPage'
 import { useSettings } from './app/settings'
 
@@ -35,6 +36,7 @@ export default function App() {
           <Route path="/taken" element={<TasksOverviewPage />} />
           <Route path="/shared" element={<SharedPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/notificaties" element={<NotificationsPage />} />
           <Route path="/bestanden" element={<FilesPage />} />
           <Route path="/notities" element={<NotesPage />} />
           <Route path="/team" element={<TeamPage />} />

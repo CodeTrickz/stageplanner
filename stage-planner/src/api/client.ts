@@ -13,6 +13,7 @@ type ApiStatus = {
 export type RateLimitEvent = {
   retryAfterSec: number
   message: string
+  traceId?: string
 }
 
 const status: ApiStatus = { inFlight: 0, lastSuccessAt: null, lastErrorAt: null }
@@ -43,6 +44,11 @@ function emitRateLimit(evt: RateLimitEvent) {
   for (const l of rateLimitListeners) l(evt)
 }
 
+let lastTraceId: string | null = null
+export function getLastTraceId() {
+  return lastTraceId
+}
+
 export async function apiFetch(path: string, options: RequestInit & { token?: string } = {}) {
   status.inFlight += 1
   emit()
@@ -56,6 +62,8 @@ export async function apiFetch(path: string, options: RequestInit & { token?: st
         ...(options.token ? { authorization: `Bearer ${options.token}` } : {}),
       },
     })
+    const traceId = res.headers.get('x-trace-id')
+    if (traceId) lastTraceId = traceId
     const data = await res.json().catch(() => ({}))
     if (!res.ok) {
       if (res.status === 429) {
@@ -66,7 +74,7 @@ export async function apiFetch(path: string, options: RequestInit & { token?: st
             ? Number(data?.retryAfter)
             : 1
         const message = `Te veel verzoeken. Probeer opnieuw over ${retryAfterSec} seconden.`
-        emitRateLimit({ retryAfterSec, message })
+        emitRateLimit({ retryAfterSec, message, traceId: traceId || undefined })
         status.lastErrorAt = Date.now()
         emit()
         return null
@@ -77,9 +85,11 @@ export async function apiFetch(path: string, options: RequestInit & { token?: st
         level: 'error',
         source: 'api',
         message: data?.error || `http_${res.status}`,
-        meta: { url, path, method, status: res.status, statusText: res.statusText, data },
+        meta: { url, path, method, status: res.status, statusText: res.statusText, data, traceId: traceId || undefined },
       })
-      throw new Error(data?.error || 'api_error')
+      const err: any = new Error(data?.error || 'api_error')
+      err.traceId = traceId || undefined
+      throw err
     }
     status.lastSuccessAt = Date.now()
     emit()
@@ -97,6 +107,7 @@ export async function apiFetch(path: string, options: RequestInit & { token?: st
         method: (options.method || 'GET').toUpperCase(),
         errName: e instanceof Error ? e.name : undefined,
         errMessage: e instanceof Error ? e.message : String(e),
+        traceId: (e as any)?.traceId || lastTraceId || undefined,
       },
     })
     throw e

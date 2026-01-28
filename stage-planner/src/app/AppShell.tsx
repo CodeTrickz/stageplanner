@@ -90,7 +90,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   React.useEffect(
     () =>
       subscribeRateLimit((evt) => {
-        setRateLimitMessage(evt.message)
+        const suffix = evt.traceId ? ` (traceId: ${evt.traceId})` : ''
+        setRateLimitMessage(`${evt.message}${suffix}`)
       }),
     [],
   )

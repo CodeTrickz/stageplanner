@@ -4,6 +4,18 @@
 
 - No changes yet.
 
+## [1.0.2] - 2026-01-28
+
+### Fixed
+- Fixed "too many requests" error when duplicating days
+- Optimized workspace events handling to only refresh planning items for planning events (not all 5 useEffect hooks)
+- Added debouncing (800ms) for planning events to prevent rate limiting
+- Improved HTML layout structure for planning page boxes
+
+### Changed
+- Increased API rate limit from 100 to 200 requests per 15 minutes for better UX
+- Increased auth rate limit from 30 to 50 requests per 15 minutes
+
 ## [1.0.1] - 2026-01-28
 
 ### Fixed

@@ -227,14 +227,14 @@ if (process.env.TRUST_PROXY) {
 }
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 200, // Increased from 100 to 200 requests per 15 minutes for better UX
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { error: 'rate_limited' },
 })
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 30,
+  max: 50, // Increased from 30 to 50 requests per 15 minutes
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { error: 'rate_limited' },
@@ -1867,6 +1867,12 @@ const planningBulkDeleteSchema = z.object({
   itemIds: z.array(z.string().min(1)).min(1).max(100),
 })
 
+const planningDuplicateSchema = z.object({
+  workspaceId: z.string().min(1),
+  sourceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  targetDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+})
+
 app.patch('/planning/bulk', requireAuth, asyncHandler(async (req, res) => {
   const u = getDbUserOr401(req, res)
   if (!u) return
@@ -1923,6 +1929,51 @@ app.post('/planning/bulk-delete', requireAuth, asyncHandler(async (req, res) => 
   invalidateWorkspaceCache(workspaceId)
   broadcastWorkspace(workspaceId, 'planning')
   return res.json({ deletedCount: result.deletedCount })
+}))
+
+app.post('/planning/duplicate', requireAuth, asyncHandler(async (req, res) => {
+  const u = getDbUserOr401(req, res)
+  if (!u) return
+  const parsed = planningDuplicateSchema.safeParse(req.body)
+  if (!parsed.success) return res.status(400).json({ error: 'invalid_input' })
+  const { workspaceId, sourceDate, targetDate } = parsed.data
+
+  const role = db.getMembershipRole(u.id, workspaceId)
+  if (!role) return res.status(403).json({ error: 'not_member' })
+  if (!canEditInWorkspace(u.id, workspaceId, u.id)) {
+    return res.status(403).json({ error: 'insufficient_permissions' })
+  }
+
+  const sourceItems = db.listPlanningForGroup(workspaceId, sourceDate)
+  if (sourceItems.length === 0) {
+    return res.json({ createdCount: 0, items: [] })
+  }
+
+  const created: DbPlanningItem[] = []
+  for (const item of sourceItems) {
+    const dup = db.upsertPlanning(u.id, {
+      groupId: workspaceId,
+      date: targetDate,
+      start: item.start,
+      end: item.end,
+      title: item.title,
+      notes: item.notes ?? null,
+      tagsJson: item.tagsJson ?? '[]',
+      priority: item.priority,
+      status: item.status,
+    })
+    created.push(dup)
+  }
+
+  audit(req, 'planning.duplicate_day', 'planning', workspaceId, {
+    workspaceId,
+    sourceDate,
+    targetDate,
+    count: created.length,
+  })
+  invalidateWorkspaceCache(workspaceId)
+  broadcastWorkspace(workspaceId, 'planning')
+  return res.json({ createdCount: created.length, items: created })
 }))
 
 app.post('/planning', requireAuth, asyncHandler(async (req, res) => {

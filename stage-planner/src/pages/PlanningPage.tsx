@@ -15,6 +15,7 @@ import {
   DialogContent,
   DialogTitle,
   IconButton,
+  Menu,
   MenuItem,
   Paper,
   Snackbar,
@@ -24,7 +25,7 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { DayTimeline } from '../components/DayTimeline'
 import { MonthCalendar } from '../components/MonthCalendar'
@@ -210,12 +211,65 @@ export function PlanningPage() {
   const [bulkTagsTouched, setBulkTagsTouched] = useState(false)
   const [bulkLoading, setBulkLoading] = useState(false)
   const [bulkToast, setBulkToast] = useState<{ message: string; severity: 'success' | 'error' } | null>(null)
+  const [duplicateAnchor, setDuplicateAnchor] = useState<null | HTMLElement>(null)
+  const refreshDebounceRef = useRef<NodeJS.Timeout | null>(null)
+  const planningRefreshRef = useRef<(() => void) | null>(null)
+
+  // Separate refresh function for planning items only
+  const refreshPlanningItems = useCallback(async () => {
+    if (!token || !currentWorkspace?.id) return
+    const workspaceId = String(currentWorkspace.id)
+    const url = `/planning?workspaceId=${encodeURIComponent(workspaceId)}`
+    try {
+      const result = await apiFetch(url, { token: token || undefined })
+      const remoteItems = (result.items || []) as ServerPlanningItem[]
+      setItems(remoteItems)
+    } catch (e) {
+      if (import.meta.env.DEV) {
+        console.error('Failed to refresh planning items:', e)
+      }
+    }
+  }, [token, currentWorkspace?.id])
+
+  // Store refresh function in ref for use in duplicateDay
+  useEffect(() => {
+    planningRefreshRef.current = refreshPlanningItems
+  }, [refreshPlanningItems])
 
   useWorkspaceEvents((evt) => {
-    if (['planning', 'notes', 'files', 'file_meta', 'links'].includes(evt.type)) {
-      setRefreshTick((v) => v + 1)
+    // For planning events, only refresh planning items directly to avoid triggering all 5 useEffect hooks
+    // This prevents rate limiting when duplicating days or making multiple planning changes
+    if (evt.type === 'planning') {
+      if (refreshDebounceRef.current) {
+        clearTimeout(refreshDebounceRef.current)
+      }
+      refreshDebounceRef.current = setTimeout(() => {
+        // Only refresh planning items for planning events, not notes/files/etc
+        if (planningRefreshRef.current) {
+          void planningRefreshRef.current()
+        }
+        refreshDebounceRef.current = null
+      }, 800) // 800ms debounce for planning events to prevent rate limiting
+    } else if (['notes', 'files', 'file_meta', 'links'].includes(evt.type)) {
+      // For other events, trigger full refresh with longer debounce
+      if (refreshDebounceRef.current) {
+        clearTimeout(refreshDebounceRef.current)
+      }
+      refreshDebounceRef.current = setTimeout(() => {
+        setRefreshTick((v) => v + 1)
+        refreshDebounceRef.current = null
+      }, 1000) // 1000ms debounce for other events
     }
   })
+
+  // Cleanup debounce timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (refreshDebounceRef.current) {
+        clearTimeout(refreshDebounceRef.current)
+      }
+    }
+  }, [])
 
   const fetchTemplates = useCallback(async () => {
     if (!token || !currentWorkspace?.id) {
@@ -821,6 +875,49 @@ export function PlanningPage() {
     }
   }
 
+  async function duplicateDay(kind: 'yesterday' | 'prevWeek') {
+    if (!canEdit) return
+    if (!token || !currentWorkspace?.id) return
+    const current = dateFromYmdLocal(date)
+    const deltaDays = kind === 'yesterday' ? -1 : -7
+    const source = new Date(current.getTime())
+    source.setDate(source.getDate() + deltaDays)
+    const sourceDate = yyyyMmDdLocal(source)
+    const targetDate = date
+    try {
+      const result = await apiFetch('/planning/duplicate', {
+        method: 'POST',
+        token: token || undefined,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          workspaceId: currentWorkspace.id,
+          sourceDate,
+          targetDate,
+        }),
+      })
+      const createdCount = Number(result?.createdCount || 0)
+      if (createdCount > 0) {
+        setBulkToast({
+          message: `${createdCount} item(s) gedupliceerd van ${sourceDate} naar ${targetDate}.`,
+          severity: 'success',
+        })
+        // Don't manually refresh here - the workspace event from backend will trigger
+        // a planning-only refresh (not all 5 useEffect hooks) after debounce
+        // This prevents rate limiting from multiple simultaneous API calls
+      } else {
+        setBulkToast({
+          message: `Geen items om te dupliceren van ${sourceDate}.`,
+          severity: 'error',
+        })
+      }
+    } catch (e) {
+      setBulkToast({
+        message: e instanceof Error ? e.message : 'Dag dupliceren mislukt.',
+        severity: 'error',
+      })
+    }
+  }
+
   // Global hotkeys for Planning page
   useGlobalHotkeys(
     (event) => {
@@ -873,8 +970,18 @@ export function PlanningPage() {
         <b>← / →</b> = Previous / next week
       </Typography>
 
-      <Stack direction="column" spacing={{ xs: 1.5, sm: 2 }} sx={{ '@media (min-width:900px)': { flexDirection: 'row', alignItems: 'stretch' } }}>
-        <Box sx={{ width: '100%', display: 'grid', gap: { xs: 1.5, sm: 2 }, '@media (min-width:900px)': { width: 360 } }}>
+      <Box
+        sx={{
+          display: 'grid',
+          gap: { xs: 1.5, sm: 2, md: 3 },
+          alignItems: 'flex-start',
+          gridTemplateColumns: {
+            xs: '1fr',
+            md: 'minmax(0, 380px) minmax(0, 1fr)',
+          },
+        }}
+      >
+        <Box sx={{ width: '100%', display: 'grid', gap: { xs: 1.5, sm: 2 }, maxWidth: { md: 380 } }}>
           <MonthCalendar value={date} onChange={setDate} />
           <Paper variant="outlined" sx={{ p: { xs: 1, sm: 1.5 } }}>
             <Stack direction="column" spacing={{ xs: 1, sm: 1.5 }} sx={{ '@media (min-width:600px)': { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' } }}>
@@ -887,18 +994,49 @@ export function PlanningPage() {
                 size="small"
                 sx={{ width: { xs: '100%', sm: 'auto' }, maxWidth: { xs: '100%', sm: 200 } }}
               />
-              <Button
-                variant="contained"
-                onClick={startNew}
-                size="small"
-                disabled={!canEdit}
-                sx={{ alignSelf: { xs: 'stretch', sm: 'auto' } }}
-                title="New item (shortcut: N)"
-              >
-                Nieuw item (N)
-              </Button>
+              <Stack direction="row" spacing={1} sx={{ alignSelf: { xs: 'stretch', sm: 'auto' } }}>
+                <Button
+                  variant="contained"
+                  onClick={startNew}
+                  size="small"
+                  disabled={!canEdit}
+                  title="New item (shortcut: N)"
+                >
+                  Nieuw item (N)
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  disabled={!canEdit}
+                  onClick={(e) => setDuplicateAnchor(e.currentTarget)}
+                >
+                  Dupliceer dag
+                </Button>
+              </Stack>
             </Stack>
           </Paper>
+          <Menu
+            anchorEl={duplicateAnchor}
+            open={Boolean(duplicateAnchor)}
+            onClose={() => setDuplicateAnchor(null)}
+          >
+            <MenuItem
+              onClick={() => {
+                setDuplicateAnchor(null)
+                void duplicateDay('yesterday')
+              }}
+            >
+              Van gisteren
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                setDuplicateAnchor(null)
+                void duplicateDay('prevWeek')
+              }}
+            >
+              Van dezelfde dag vorige week
+            </MenuItem>
+          </Menu>
           <Paper variant="outlined" sx={{ p: { xs: 1, sm: 1.5 } }}>
             <Stack direction="column" spacing={1}>
               <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
@@ -1053,7 +1191,7 @@ export function PlanningPage() {
           </Paper>
         </Box>
 
-        <Box sx={{ flex: 1, display: 'grid', gap: 2 }}>
+        <Box sx={{ width: '100%', display: 'grid', gap: 2 }}>
           <DayTimeline
             items={itemsForDate.map((it) => ({
               id: it.id,
@@ -1073,7 +1211,7 @@ export function PlanningPage() {
             timeFormat={timeFormat}
           />
         </Box>
-      </Stack>
+      </Box>
 
       {itemsForDate.length === 0 && (
         <Alert severity="info">

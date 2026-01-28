@@ -34,6 +34,7 @@ import { dateFromYmdLocal, startOfWeekMonday, yyyyMmDdLocal } from '../utils/dat
 import { apiFetch, useApiToken } from '../api/client'
 import { useWorkspaceEvents } from '../hooks/useWorkspaceEvents'
 import { getWorkspacePermissions } from '../utils/permissions'
+import { useGlobalHotkeys } from '../hooks/useGlobalHotkeys'
 
 type ServerPlanningItem = {
   id: string
@@ -816,10 +817,56 @@ export function PlanningPage() {
     }
   }
 
+  // Global hotkeys for Planning page
+  useGlobalHotkeys(
+    (event) => {
+      // Only handle shortcuts when user can edit
+      if (!canEdit) return
+
+      const key = event.key
+
+      // N => new planning item
+      if ((key === 'n' || key === 'N') && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        event.preventDefault()
+        startNew()
+        return
+      }
+
+      // Ctrl+S / Cmd+S => save current draft (when dialog is open)
+      if ((key === 's' || key === 'S') && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault()
+        if (open && !validation) {
+          void save()
+        }
+        return
+      }
+
+      // Left / Right arrow => previous / next week (based on current selected date)
+      if (key === 'ArrowLeft' || key === 'ArrowRight') {
+        event.preventDefault()
+        try {
+          const current = dateFromYmdLocal(date)
+          const deltaDays = key === 'ArrowLeft' ? -7 : 7
+          current.setDate(current.getDate() + deltaDays)
+          setDate(yyyyMmDdLocal(current))
+        } catch {
+          // Ignore invalid date
+        }
+      }
+    },
+    [canEdit, open, validation, date],
+  )
+
   return (
     <Box sx={{ display: 'grid', gap: { xs: 1.5, sm: 2 } }}>
       <Typography variant="h5" sx={{ fontWeight: 800, fontSize: { xs: '1.125rem', sm: '1.25rem' } }}>
         Planning
+      </Typography>
+      <Typography variant="body2" color="text.secondary">
+        Shortcuts:&nbsp;
+        <b>N</b> = New item,&nbsp;
+        <b>Ctrl+S / Cmd+S</b> = Save,&nbsp;
+        <b>← / →</b> = Previous / next week
       </Typography>
 
       <Stack direction="column" spacing={{ xs: 1.5, sm: 2 }} sx={{ '@media (min-width:900px)': { flexDirection: 'row', alignItems: 'stretch' } }}>
@@ -842,8 +889,9 @@ export function PlanningPage() {
                 size="small"
                 disabled={!canEdit}
                 sx={{ alignSelf: { xs: 'stretch', sm: 'auto' } }}
+                title="New item (shortcut: N)"
               >
-                Nieuw item
+                Nieuw item (N)
               </Button>
             </Stack>
           </Paper>
@@ -1348,8 +1396,8 @@ export function PlanningPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Annuleer</Button>
-          <Button variant="contained" onClick={save} disabled={!!validation}>
-            Opslaan
+          <Button variant="contained" onClick={save} disabled={!!validation} title="Save (Ctrl+S / Cmd+S)">
+            Opslaan (Ctrl+S / Cmd+S)
           </Button>
         </DialogActions>
       </Dialog>

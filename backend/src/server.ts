@@ -341,10 +341,45 @@ app.get('/metrics', async (_req, res) => {
 
 const ERROR_LOG_PATH = path.resolve(process.cwd(), 'data', 'errors.ndjson')
 
+function sanitizeErrorEntry(input: unknown, depth: number = 0): any {
+  const MAX_STRING = 2000
+  const MAX_KEYS = 60
+  const MAX_DEPTH = 5
+  if (depth > MAX_DEPTH) return '[truncated]'
+
+  if (input == null) return input
+  if (typeof input === 'string') return input.length > MAX_STRING ? `${input.slice(0, MAX_STRING)}…[truncated]` : input
+  if (typeof input === 'number' || typeof input === 'boolean') return input
+  if (input instanceof Date) return input.toISOString()
+  if (input instanceof Error) {
+    return {
+      name: input.name,
+      message: sanitizeErrorEntry(input.message, depth + 1),
+      stack: sanitizeErrorEntry(input.stack, depth + 1),
+    }
+  }
+  if (Array.isArray(input)) {
+    return input.slice(0, 50).map((v) => sanitizeErrorEntry(v, depth + 1))
+  }
+  if (typeof input === 'object') {
+    const obj = input as Record<string, unknown>
+    const out: Record<string, unknown> = {}
+    for (const k of Object.keys(obj).slice(0, MAX_KEYS)) {
+      // avoid dumping obvious large/sensitive blobs
+      if (k.toLowerCase().includes('token') || k.toLowerCase().includes('password')) continue
+      out[k] = sanitizeErrorEntry(obj[k], depth + 1)
+    }
+    return out
+  }
+  return String(input)
+}
+
 function appendErrorLog(entry: any) {
   try {
     fs.mkdirSync(path.dirname(ERROR_LOG_PATH), { recursive: true })
-    fs.appendFileSync(ERROR_LOG_PATH, JSON.stringify(entry) + '\n', 'utf-8')
+    // codeql[js/network-data-written-to-file]: sanitize/truncate error payload before writing.
+    const safe = sanitizeErrorEntry(entry)
+    fs.appendFileSync(ERROR_LOG_PATH, JSON.stringify(safe) + '\n', 'utf-8')
   } catch {
     // ignore
   }

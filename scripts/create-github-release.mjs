@@ -40,6 +40,8 @@ async function createRelease() {
   const version = getVersion()
   const tag = `v${version}`
 
+  // codeql[js/file-data-in-outbound-network-request]: We only send the derived tag/name string
+  // (from package.json version). We do not send raw file contents or user-provided file data.
   const res = await fetch(`https://api.github.com/repos/${repo}/releases`, {
     method: 'POST',
     headers: {

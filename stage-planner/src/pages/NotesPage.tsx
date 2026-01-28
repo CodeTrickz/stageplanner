@@ -35,6 +35,25 @@ import { useWorkspace } from '../hooks/useWorkspace'
 import { useWorkspaceEvents } from '../hooks/useWorkspaceEvents'
 import { getWorkspacePermissions } from '../utils/permissions'
 
+function stripHtmlToText(input: string): string {
+  // Intentionally avoid DOMParser/innerHTML to prevent treating untrusted strings as HTML.
+  // This is a best-effort conversion for exports (txt/zip), not for rendering.
+  return String(input ?? '')
+    .replace(/\r\n/g, '\n')
+    .replace(/<\s*br\s*\/?\s*>/gi, '\n')
+    .replace(/<\/\s*p\s*>/gi, '\n')
+    .replace(/<\/\s*div\s*>/gi, '\n')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 type ServerNote = {
   id: string
   subject: string
@@ -445,7 +464,7 @@ export function NotesPage() {
         : selectedFiles.map((f) => `- ${f.name}`).join('\n')
 
     const html = draft.body || ''
-    const txt = typeof document !== 'undefined' ? (new DOMParser().parseFromString(html, 'text/html').body.textContent ?? '') : html
+    const txt = stripHtmlToText(html)
     const content = `Onderwerp: ${draft.subject || '(geen)'}\n\n${txt || ''}\n\nBijlages:\n${attachmentLines}\n`
     downloadBlob(new Blob([content], { type: 'text/plain;charset=utf-8' }), filename)
   }
@@ -459,7 +478,7 @@ export function NotesPage() {
         ? '(geen)'
         : selectedFiles.map((f) => `- ${f.name}`).join('\n')
     const html = draft.body || ''
-    const txt = typeof document !== 'undefined' ? (new DOMParser().parseFromString(html, 'text/html').body.textContent ?? '') : html
+    const txt = stripHtmlToText(html)
     const content = `Onderwerp: ${draft.subject || '(geen)'}\n\n${txt || ''}\n\nBijlages:\n${attachmentLines}\n`
     zip.file(`${base}.txt`, content)
 

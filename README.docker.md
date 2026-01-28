@@ -17,6 +17,9 @@ Docker Compose reads a `.env` file automatically. Copy `env.example` to `.env` a
 - **NOTIFICATIONS_SOON_DAYS**: days before deadline to notify (0 disables "soon")
 - **NOTIFICATIONS_JOB_INTERVAL_MS**: job interval for deadline scan (ms)
 - **VITE_IDLE_LOGOUT_MINUTES**: frontend idle logout (0 = never, default 30)
+- **OTEL_ENABLED**: enable OpenTelemetry tracing (default `true`)
+- **OTEL_SERVICE_NAME**: service name shown in Jaeger
+- **OTEL_EXPORTER_JAEGER_ENDPOINT**: Jaeger collector endpoint (e.g. `http://jaeger:14268/api/traces`)
 
 ### 2) Start
 

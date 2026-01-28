@@ -16,7 +16,7 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import { sendMail } from './mail'
 import fs from 'node:fs'
-import { Registry, Counter, Histogram, collectDefaultMetrics } from 'prom-client'
+import { register, httpRequestDurationSeconds, httpRequestsTotal, httpErrorsTotal, sseActiveConnections } from './metrics'
 import { stringify } from 'csv-stringify'
 import { buildStageReportData } from './stage-report'
 import { context, trace } from '@opentelemetry/api'
@@ -147,24 +147,6 @@ function buildResetUrls(rawToken: string) {
 // Load env from backend/env.local if it exists (no dotfile needed)
 dotenv.config({ path: path.resolve(__dirname, '..', 'env.local') })
 
-// Prometheus metrics setup
-const register = new Registry()
-collectDefaultMetrics({ register })
-
-const httpRequestDuration = new Histogram({
-  name: 'http_request_duration_seconds',
-  help: 'Duration of HTTP requests in seconds',
-  labelNames: ['method', 'route', 'status'],
-  registers: [register],
-})
-
-const httpRequestTotal = new Counter({
-  name: 'http_requests_total',
-  help: 'Total number of HTTP requests',
-  labelNames: ['method', 'route', 'status'],
-  registers: [register],
-})
-
 const app = express()
 type SseClient = {
   res: express.Response
@@ -277,8 +259,11 @@ app.use((req, res, next) => {
   res.on('finish', () => {
     const duration = (Date.now() - start) / 1000
     const route = req.route?.path || req.path || 'unknown'
-    httpRequestDuration.observe({ method: req.method, route, status: res.statusCode }, duration)
-    httpRequestTotal.inc({ method: req.method, route, status: res.statusCode })
+    httpRequestDurationSeconds.observe({ method: req.method, route, status: res.statusCode }, duration)
+    httpRequestsTotal.inc({ method: req.method, route, status: res.statusCode })
+    if (res.statusCode >= 400) {
+      httpErrorsTotal.inc({ method: req.method, route, status: res.statusCode })
+    }
   })
   next()
 })
@@ -287,6 +272,10 @@ app.get('/health', (_req, res) => res.json({ ok: true }))
 
 // Prometheus metrics endpoint
 app.get('/metrics', async (_req, res) => {
+  const token = process.env.METRICS_TOKEN
+  if (token && _req.headers.authorization !== `Bearer ${token}`) {
+    return res.status(401).json({ error: 'unauthorized' })
+  }
   res.set('Content-Type', register.contentType)
   res.end(await register.metrics())
 })
@@ -834,6 +823,7 @@ app.get('/events', asyncHandler(async (req, res) => {
 
   const client = { res, workspaceId }
   sseClients.add(client)
+  sseActiveConnections.set(sseClients.size)
 
   const keepAlive = setInterval(() => {
     res.write(`event: ping\n`)
@@ -843,6 +833,7 @@ app.get('/events', asyncHandler(async (req, res) => {
   req.on('close', () => {
     clearInterval(keepAlive)
     sseClients.delete(client)
+    sseActiveConnections.set(sseClients.size)
     span.end()
   })
   return

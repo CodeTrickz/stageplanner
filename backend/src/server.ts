@@ -1,3 +1,6 @@
+import { initOtel } from './otel'
+void initOtel()
+
 import cors from 'cors'
 import dotenv from 'dotenv'
 import express from 'express'
@@ -13,15 +16,11 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import { sendMail } from './mail'
 import fs from 'node:fs'
-import { Registry, Counter, Histogram, collectDefaultMetrics } from 'prom-client'
-import { FORMAT_HTTP_HEADERS, SpanContext } from 'opentracing'
+import { register, httpRequestDurationSeconds, httpRequestsTotal, httpErrorsTotal, sseActiveConnections, sseDisconnectsTotal } from './metrics'
 import { stringify } from 'csv-stringify'
 import { buildStageReportData } from './stage-report'
+import { context, trace } from '@opentelemetry/api'
 
-// jaeger-client is a CommonJS module that exports an object with initTracer
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const jaegerClient = require('jaeger-client')
-const initTracer = jaegerClient.initTracer as (config: any, options?: any) => any
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const PDFDocument = require('pdfkit')
 
@@ -148,57 +147,6 @@ function buildResetUrls(rawToken: string) {
 // Load env from backend/env.local if it exists (no dotfile needed)
 dotenv.config({ path: path.resolve(__dirname, '..', 'env.local') })
 
-// Prometheus metrics setup
-const register = new Registry()
-collectDefaultMetrics({ register })
-
-const httpRequestDuration = new Histogram({
-  name: 'http_request_duration_seconds',
-  help: 'Duration of HTTP requests in seconds',
-  labelNames: ['method', 'route', 'status'],
-  registers: [register],
-})
-
-const httpRequestTotal = new Counter({
-  name: 'http_requests_total',
-  help: 'Total number of HTTP requests',
-  labelNames: ['method', 'route', 'status'],
-  registers: [register],
-})
-
-// Jaeger tracing setup
-const jaegerAgentPort = process.env.JAEGER_AGENT_PORT
-  ? Number.parseInt(process.env.JAEGER_AGENT_PORT, 10)
-  : 6831
-
-const jaegerConfig = {
-  serviceName: process.env.JAEGER_SERVICE_NAME || 'stageplanner-backend',
-  sampler: {
-    type: 'const',
-    param: 1, // Sample all traces
-  },
-  reporter: {
-    agentHost: process.env.JAEGER_AGENT_HOST || 'jaeger',
-    agentPort: Number.isFinite(jaegerAgentPort) ? jaegerAgentPort : 6831,
-    logSpans: process.env.NODE_ENV !== 'production',
-  },
-}
-
-const tracer = initTracer(jaegerConfig, {
-  logger: {
-    info: (msg: string) => {
-      if (process.env.NODE_ENV !== 'production') {
-        // eslint-disable-next-line no-console
-        console.log(`[Jaeger] ${msg}`)
-      }
-    },
-    error: (msg: string) => {
-      // eslint-disable-next-line no-console
-      console.error(`[Jaeger] ${msg}`)
-    },
-  },
-})
-
 const app = express()
 type SseClient = {
   res: express.Response
@@ -293,29 +241,15 @@ app.use(
   }),
 )
 
-// Jaeger tracing middleware
-app.use((req, res, next) => {
-  const parentSpanContext = tracer.extract(FORMAT_HTTP_HEADERS, req.headers)
-  const span = tracer.startSpan(`${req.method} ${req.path}`, {
-    childOf: parentSpanContext as SpanContext | undefined,
-    tags: {
-      'http.method': req.method,
-      'http.url': req.url,
-      'http.route': req.route?.path || req.path,
-    },
-  })
-
-  // Store span in request for use in route handlers
-  ;(req as any).span = span
-
-  res.on('finish', () => {
-    span.setTag('http.status_code', res.statusCode)
-    if (res.statusCode >= 400) {
-      span.setTag('error', true)
-    }
-    span.finish()
-  })
-
+// Trace correlation: expose traceId to frontend via response header
+app.use((_req, res, next) => {
+  try {
+    const span = trace.getSpan(context.active())
+    const traceId = span?.spanContext().traceId
+    if (traceId) res.setHeader('x-trace-id', traceId)
+  } catch {
+    // ignore
+  }
   next()
 })
 
@@ -325,8 +259,11 @@ app.use((req, res, next) => {
   res.on('finish', () => {
     const duration = (Date.now() - start) / 1000
     const route = req.route?.path || req.path || 'unknown'
-    httpRequestDuration.observe({ method: req.method, route, status: res.statusCode }, duration)
-    httpRequestTotal.inc({ method: req.method, route, status: res.statusCode })
+    httpRequestDurationSeconds.observe({ method: req.method, route, status: res.statusCode }, duration)
+    httpRequestsTotal.inc({ method: req.method, route, status: res.statusCode })
+    if (res.statusCode >= 400) {
+      httpErrorsTotal.inc({ method: req.method, route, status: res.statusCode })
+    }
   })
   next()
 })
@@ -335,6 +272,10 @@ app.get('/health', (_req, res) => res.json({ ok: true }))
 
 // Prometheus metrics endpoint
 app.get('/metrics', async (_req, res) => {
+  const token = process.env.METRICS_TOKEN
+  if (token && _req.headers.authorization !== `Bearer ${token}`) {
+    return res.status(401).json({ error: 'unauthorized' })
+  }
   res.set('Content-Type', register.contentType)
   res.end(await register.metrics())
 })
@@ -857,6 +798,9 @@ app.post('/me/password', requireAuth, rlPasswordChange, asyncHandler(async (req,
 
 // SSE: workspace updates (push layer)
 app.get('/events', asyncHandler(async (req, res) => {
+  const otelTracer = trace.getTracer('stageplanner-backend')
+  return otelTracer.startActiveSpan('sse.connect', (span) => {
+    try {
   const token = String(req.query.token || '')
   const u = getUserFromToken(token)
   if (!u) return res.status(401).json({ error: 'unauthorized' })
@@ -865,6 +809,8 @@ app.get('/events', asyncHandler(async (req, res) => {
   if (!canViewInWorkspace(u.id, workspaceId)) {
     return res.status(403).json({ error: 'insufficient_permissions' })
   }
+  span.setAttribute('workspaceId', workspaceId)
+  span.setAttribute('userId', u.id)
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -877,6 +823,7 @@ app.get('/events', asyncHandler(async (req, res) => {
 
   const client = { res, workspaceId }
   sseClients.add(client)
+  sseActiveConnections.set(sseClients.size)
 
   const keepAlive = setInterval(() => {
     res.write(`event: ping\n`)
@@ -886,6 +833,17 @@ app.get('/events', asyncHandler(async (req, res) => {
   req.on('close', () => {
     clearInterval(keepAlive)
     sseClients.delete(client)
+    sseActiveConnections.set(sseClients.size)
+    sseDisconnectsTotal.inc()
+    span.end()
+  })
+  return
+    } catch (e) {
+      span.recordException(e as any)
+      span.setStatus({ code: 2 })
+      span.end()
+      throw e
+    }
   })
 }))
 
@@ -1173,13 +1131,18 @@ app.get('/files/:id', requireAuth, asyncHandler(async (req, res) => {
 }))
 
 app.post('/files', requireAuth, asyncHandler(async (req, res) => {
+  const otelTracer = trace.getTracer('stageplanner-backend')
+  return otelTracer.startActiveSpan('files.upload', (span) => {
+    try {
   const u = getDbUserOr401(req, res)
   if (!u) return
+  span.setAttribute('userId', u.id)
 
   const parsed = fileUploadSchema.safeParse(req.body)
   if (!parsed.success) return res.status(400).json({ error: 'invalid_input', issues: parsed.error.issues })
 
   const d = parsed.data
+  if (d.workspaceId) span.setAttribute('workspaceId', d.workspaceId)
   const safeName = sanitizeUploadName(d.name)
   if (!safeName) return res.status(400).json({ error: 'invalid_file_name' })
   if (!isSafeMimeType(d.type)) return res.status(400).json({ error: 'invalid_file_type' })
@@ -1234,7 +1197,7 @@ app.post('/files', requireAuth, asyncHandler(async (req, res) => {
   audit(req, 'file.upload', 'file', file.id, { workspaceId: finalWorkspaceId, name: file.name, size: file.size })
   if (file.workspaceId) invalidateWorkspaceCache(file.workspaceId)
   if (file.workspaceId) broadcastWorkspace(file.workspaceId, 'files')
-  return res.json({
+  const out = res.json({
     file: {
       id: file.id,
       userId: file.userId,
@@ -1247,6 +1210,15 @@ app.post('/files', requireAuth, asyncHandler(async (req, res) => {
       createdAt: file.createdAt,
       updatedAt: file.updatedAt,
     },
+  })
+  span.end()
+  return out
+    } catch (e) {
+      span.recordException(e as any)
+      span.setStatus({ code: 2 })
+      span.end()
+      throw e
+    }
   })
 }))
 
@@ -1977,8 +1949,12 @@ app.post('/planning/duplicate', requireAuth, asyncHandler(async (req, res) => {
 }))
 
 app.post('/planning', requireAuth, asyncHandler(async (req, res) => {
+  const otelTracer = trace.getTracer('stageplanner-backend')
+  return otelTracer.startActiveSpan('planning.upsert', (span) => {
+    try {
   const u = getDbUserOr401(req, res)
   if (!u) return
+  span.setAttribute('userId', u.id)
   const parsed = planningUpsertSchemaWithWorkspace.safeParse(req.body)
   if (!parsed.success) return res.status(400).json({ error: 'invalid_input' })
   const d = parsed.data
@@ -1994,6 +1970,8 @@ app.post('/planning', requireAuth, asyncHandler(async (req, res) => {
   // Check workspace membership and permissions
   const role = db.getMembershipRole(u.id, workspaceId)
   if (!role) return res.status(403).json({ error: 'not_member' })
+  span.setAttribute('workspaceId', workspaceId)
+  span.setAttribute('hasId', Boolean(d.id))
 
   // update path
   if (d.id) {
@@ -2027,7 +2005,9 @@ app.post('/planning', requireAuth, asyncHandler(async (req, res) => {
     audit(req, 'planning.update', 'planning', item.id, { workspaceId, date: item.date })
     invalidateWorkspaceCache(workspaceId)
     broadcastWorkspace(workspaceId, 'planning')
-    return res.json({ item, workspaceId })
+    const out = res.json({ item, workspaceId })
+    span.end()
+    return out
   }
 
   // create path - only editors/owners can create
@@ -2050,7 +2030,16 @@ app.post('/planning', requireAuth, asyncHandler(async (req, res) => {
   audit(req, 'planning.create', 'planning', item.id, { workspaceId, date: item.date })
   invalidateWorkspaceCache(workspaceId)
   broadcastWorkspace(workspaceId, 'planning')
-  return res.json({ item, workspaceId })
+  const out = res.json({ item, workspaceId })
+  span.end()
+  return out
+    } catch (e) {
+      span.recordException(e as any)
+      span.setStatus({ code: 2 })
+      span.end()
+      throw e
+    }
+  })
 }))
 
 app.delete('/planning/:id', requireAuth, asyncHandler(async (req, res) => {

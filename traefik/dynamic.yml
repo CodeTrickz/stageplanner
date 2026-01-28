@@ -1,0 +1,35 @@
+http:
+  middlewares:
+    # Stricter rate limit for API (if exposed via Traefik in the future)
+    rate-limit-api:
+      rateLimit:
+        average: 50        # 50 req/s average per IP
+        burst: 20
+        sourceCriterion:
+          requestHost: true
+
+    # Softer rate limit for web frontend
+    rate-limit-web:
+      rateLimit:
+        average: 200       # 200 req/s average per IP
+        burst: 100
+        sourceCriterion:
+          requestHost: true
+
+    # Compression (gzip). Brotli is handled by browsers/CDN if available;
+    # Traefik's compress middleware focuses on gzip.
+    compress:
+      compress: {}
+
+    # Security headers for all frontend routes
+    security-headers:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        contentTypeNosniff: true
+        frameDeny: true
+        referrerPolicy: "strict-origin-when-cross-origin"
+
+  routers: {}
+

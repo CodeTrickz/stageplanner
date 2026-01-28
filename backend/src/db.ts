@@ -2,6 +2,7 @@ import Database from 'better-sqlite3'
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
+import { dbErrorsTotal, dbQueryDurationSeconds, classifySqlKind } from './metrics'
 
 export type DbUser = {
   id: string
@@ -814,6 +815,35 @@ function openSqlite() {
     SET group_id = (SELECT group_id FROM users WHERE users.id = notes.user_id)
     WHERE group_id IS NULL;
   `)
+
+  // DB metrics: wrap prepared statements to measure run/get/all timings
+  const origPrepare = db.prepare.bind(db) as any
+  ;(db as any).prepare = (sql: string) => {
+    const stmt = origPrepare(sql)
+    const kind = classifySqlKind(sql)
+
+    const wrap = (op: 'run' | 'get' | 'all') => {
+      const orig = (stmt as any)[op]
+      if (typeof orig !== 'function') return
+      ;(stmt as any)[op] = (...args: any[]) => {
+        const start = process.hrtime.bigint()
+        try {
+          return orig.apply(stmt, args)
+        } catch (e) {
+          dbErrorsTotal.inc()
+          throw e
+        } finally {
+          const end = process.hrtime.bigint()
+          const sec = Number(end - start) / 1e9
+          dbQueryDurationSeconds.observe({ op, kind }, sec)
+        }
+      }
+    }
+    wrap('run')
+    wrap('get')
+    wrap('all')
+    return stmt
+  }
 
   return db
 }

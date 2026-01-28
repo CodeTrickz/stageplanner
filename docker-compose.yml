@@ -29,6 +29,11 @@ services:
       - "--accesslog.filepath=/var/log/traefik/access.log"
       - "--accesslog.format=json"
       - "--accesslog.bufferingSize=100"
+      - "--accesslog.fields.defaultmode=keep"
+      - "--accesslog.fields.headers.defaultmode=drop"
+      - "--accesslog.fields.headers.names=traceparent:keep,tracestate:keep,x-trace-id:keep"
+      # Dynamic config (middlewares, security headers, rate limiting)
+      - "--providers.file.filename=/etc/traefik/dynamic.yml"
     ports:
       - "80:80"
       - "443:443"
@@ -36,6 +41,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik/letsencrypt:/letsencrypt
       - ./traefik/logs:/var/log/traefik
+      - ./traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.traefik-dashboard.rule=Host(`${SUBDOMAIN:-traefik}.${DOMAIN}`)"
@@ -166,6 +172,7 @@ services:
       - "traefik.http.routers.web.rule=Host(`${DOMAIN}`)"
       - "traefik.http.routers.web.entrypoints=websecure"
       - "traefik.http.routers.web.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.web.middlewares=security-headers@file,compress@file,rate-limit-web@file"
       - "traefik.http.services.web.loadbalancer.server.port=8080"
     ports:
       - "8080:8080"

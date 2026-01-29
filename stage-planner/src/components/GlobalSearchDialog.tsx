@@ -25,14 +25,13 @@ type FileResult = { kind: 'file'; groupKey: string; primary: string; secondary: 
 
 function stripHtmlToText(input: string): string {
   // Avoid DOMParser/innerHTML to prevent treating untrusted strings as HTML.
-  // We only strip tags and normalize whitespace; we do not attempt partial entity decoding.
+  // We only strip tags and normalize whitespace; we do not touch HTML entities at all.
   return String(input ?? '')
     .replace(/\r\n/g, '\n')
     .replace(/<\s*br\s*\/?\s*>/gi, '\n')
     .replace(/<\/\s*p\s*>/gi, '\n')
     .replace(/<\/\s*div\s*>/gi, '\n')
     .replace(/<[^>]*>/g, '')
-    .replace(/&[a-zA-Z0-9#]+;/g, ' ')
     .replace(/\s+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim()

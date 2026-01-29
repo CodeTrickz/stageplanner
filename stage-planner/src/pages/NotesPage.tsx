@@ -37,19 +37,17 @@ import { getWorkspacePermissions } from '../utils/permissions'
 
 function stripHtmlToText(input: string): string {
   // Intentionally avoid DOMParser/innerHTML to prevent treating untrusted strings as HTML.
-  // This is a best-effort conversion for exports (txt/zip), not for rendering.
+  // We only remove HTML tags and normalize whitespace; we do not try to partially decode entities
+  // to avoid \"incomplete multi-character sanitization\" / \"double escaping\" issues.
   return String(input ?? '')
     .replace(/\r\n/g, '\n')
     .replace(/<\s*br\s*\/?\s*>/gi, '\n')
     .replace(/<\/\s*p\s*>/gi, '\n')
     .replace(/<\/\s*div\s*>/gi, '\n')
     .replace(/<[^>]*>/g, '')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
+    // Replace any HTML entity (multi-character) with a plain space instead of decoding.
+    .replace(/&[a-zA-Z0-9#]+;/g, ' ')
+    .replace(/\s+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 }

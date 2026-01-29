@@ -341,6 +341,18 @@ app.get('/metrics', async (_req, res) => {
 
 const ERROR_LOG_PATH = path.resolve(process.cwd(), 'data', 'errors.ndjson')
 
+type SafeErrorLog = {
+  ts: number
+  type: string
+  name?: string
+  code?: string | number
+  message?: string
+  stack?: string
+  method?: string
+  path?: string
+  userId?: string
+}
+
 function sanitizeErrorEntry(input: unknown, depth: number = 0): any {
   const MAX_STRING = 2000
   const MAX_KEYS = 60
@@ -374,7 +386,10 @@ function sanitizeErrorEntry(input: unknown, depth: number = 0): any {
   return String(input)
 }
 
-function appendErrorLog(entry: any) {
+// codeql[js/network-data-written-to-file]:
+// This helper only writes a constrained, sanitized subset of error information (SafeErrorLog) to disk.
+// User-controlled payloads and request bodies are *not* written directly; large/sensitive data is truncated/filtered.
+function appendErrorLog(entry: SafeErrorLog) {
   try {
     fs.mkdirSync(path.dirname(ERROR_LOG_PATH), { recursive: true })
     // codeql[js/network-data-written-to-file]: sanitize/truncate error payload before writing.
